@@ -5,6 +5,7 @@ using DataFrames, Chain, DataFramesMeta
 import PromulaDBA as P
 using Makie, CairoMakie
 using Colors, CategoricalArrays
+using AxisKeys
 
 greet() = print("Hello Randy")
 
@@ -206,5 +207,31 @@ function plot_diff(data; dim="ECC", num=10)
   Legend(fig[1, 2], elements, labels, dim)
   display(fig)
 end
+
+
+
+# let state = Ref{Union{Int,Nothing}}(nothing)
+#   global f
+#   function f()
+#     if state[] !== nothing
+#       state[] += 1
+#     else
+#       state[] = 1
+#     end
+#     state[]
+#   end
+# end
+
+# let state = Ref{Union{Int,Nothing}}(nothing)
+#   global f
+#   function f()
+#     if state[] !== nothing
+#       state[] += 1
+#     else
+#       state[] = 1
+#     end
+#     state[]
+#   end
+# end
 
 end # module JuliaCompare
