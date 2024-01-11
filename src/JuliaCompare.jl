@@ -85,7 +85,7 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
     elseif d == "FuelEP"
       Pair(e2020db, "FlEPDS")
     elseif d == "Unit"
-      Pair(eg, "UnName")
+      Pair(eg, "UnCode")
     else
       Pair(e2020db, join([d, "DS"]))
     end
@@ -96,7 +96,7 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   DataFrame(Variable=vars, Dimensions=dims, Description=desc, Database=cfilename, DPairs=dim_pairs)
 end
 
-function get_var(i, vars, DATA_FOLDER)
+function var_id(i, vars, DATA_FOLDER)
   fname = joinpath(DATA_FOLDER, string(vars.Database[i], ".dba"))
 
   vname = string(vars.Variable[i])
@@ -104,7 +104,7 @@ function get_var(i, vars, DATA_FOLDER)
   print("fname is: ", fname)
   print("\n")
   # out = P.dataframe(fname, vname, opts..., skip_zeros=false)
-  out = P.dataframe(fname, vname, opts...)
+  out = P.dataframe(fname, vname, opts...; skip_zeros=false)
   rename!(out,
     Dict(zip(names(out)[1:end-1], split(vars.Dimensions[i], ',')))
   )
@@ -112,6 +112,10 @@ function get_var(i, vars, DATA_FOLDER)
     out.Year = parse.(Int64, out.Year)
   end
   return (out)
+end
+
+function var_id(i::Int, loc::Loc)
+  var_id(i, loc.vars, loc.DATA_FOLDER)
 end
 
 function get_data(i, vars, DATA_FOLDER)
@@ -131,8 +135,12 @@ function list_vars(CODE_FOLDER, DATA_FOLDER, db_files)
   return (vars)
 end
 
-function find_var(needle, vars)
-  i = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
+function find_var(needle, vars; exact::Bool=false)
+  if exact
+    i = findall(lowercase.(vars.Variable) .== lowercase(needle))
+  else
+    i = findall(occursin.(lowercase(needle), lowercase.(vars.Variable)))
+  end
   vars[i, 1:4]
 end
 
@@ -142,16 +150,22 @@ const Canada = ["Ontario", "Quebec", "British Columbia", "Alberta", "Manitoba",
 ]
 
 function var(needle, vars, DATA_FOLDER)
+  temp2 = find_var(needle, vars; exact=true)
+  if nrow(temp2) == 1
+    return (var_id(temp2.RowID[1], vars, DATA_FOLDER))
+  end
   temp = find_var(needle, vars)
   if nrow(temp) == 1
-    return (get_var(temp.RowID[1], vars, DATA_FOLDER))
+    return (var_id(temp.RowID[1], vars, DATA_FOLDER))
   elseif nrow(temp) == 0
-    print(Needle, " not found in vars")
+    print(Needle, " not found in vars, perhaps your variable is in the list below\n")
+    temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
+    return (temp2)
   elseif unique(temp, [:Variable, :Dimensions]) == 1
     print("Combining ", nrow(temp), "variables")
-    return (map(x -> get_var(x, vars, DATA_FOLDER), temp.RowID))
+    return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
   else
-    print(needle, " could have several values, use get_var to select one of the below")
+    print(needle, " could have several values, use var_id to select one of the below\n")
     return (temp)
   end
 end
@@ -171,6 +185,23 @@ function diff(df1, df2; name1="new", name2="old")
   replace!(df[!, Symbol(name2)], missing => 0)
   df.Diff = df[:, Symbol(name1)] .- df[:, Symbol(name2)]
   # @transform!(df, :Diff = name1 - name2)
+  return (df)
+end
+
+function join_vars(df1::DataFrame, df2::DataFrame)
+  dims = intersect(names(df1), names(df2))
+  dims = dims[dims.!="Value"]
+  df = outerjoin(df1, df2, on=dims, makeunique=true)
+  values = [setdiff(names(df2), dims); setdiff(names(df1), dims)]
+  for c ∈ eachcol(df[!, Symbol.(values)])
+    replace!(c, missing => 0)
+  end
+  return (df)
+end
+
+function join_vars(df1::DataFrame, df2::DataFrame, df3::DataFrame)
+  df = join_vars(df1, df2)
+  df = join_vars(df, df3)
   return (df)
 end
 
