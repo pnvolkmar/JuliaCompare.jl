@@ -76,18 +76,12 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   end
 
   makepairs = function (d, cfile, e2020db)
-    if d == "Enduse"
-      Pair(cfile, "EUDS")
-    elseif d in sets
-      Pair(cfile, join([d, "DS"]))
-    elseif d == "Year"
-      Pair(e2020db, "YrvDS")
-    elseif d == "FuelEP"
-      Pair(e2020db, "FlEPDS")
+    if d in sets
+      Pair(cfile, join([d, "Key"]))
     elseif d == "Unit"
       Pair(eg, "UnCode")
     else
-      Pair(e2020db, join([d, "DS"]))
+      Pair(e2020db, join([d, "Key"]))
     end
   end
 
