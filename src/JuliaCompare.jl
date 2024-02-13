@@ -232,4 +232,27 @@ function plot_diff(data; dim="ECC", num=10)
   display(fig)
 end
 
+function comparedata(data, data_b, fnames)
+  df = DataFrame()
+  for i in 1:length(data)
+    j = data[i]
+    j_b = data_b[i]
+    name = fnames.var[i]
+    print(i, name)
+    if eltype(j) == String
+      print(" is a string\n")
+    else
+      print(" \n")
+      Ref = sum(j)
+      Other = sum(j_b)
+      Diff = sum(abs.(j .- j_b))
+      LDiff = maximum(abs.(j .- j_b))
+      PDiff = Diff == 0 ? 0 : Diff / maximum(abs.([Ref, Other]))
+      push!(df, (Var=name, Ref, Other, Diff, PDiff, LDiff); promote=true)
+    end
+  end
+  df[sortperm(df.PDiff, rev=true), :]
+  return (df)
+end # compare function
+
 end # module JuliaCompare

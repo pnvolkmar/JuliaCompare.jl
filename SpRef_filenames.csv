@@ -1,4 +1,4 @@
-db, var
+db,var
 SOutput,ENPN
 MOutput,ExchangeRateGNode
 SOutput,FPF
@@ -57,4 +57,4 @@ SOutput,TotDemand
 SpInput,xRfCap
 SpInput,xRPPAdjustArea
 SpInput,xRPPExportsROW
-SpInput,xRPPImportsROW]
+SpInput,xRPPImportsROW
