@@ -182,6 +182,12 @@ function diff(df1, df2; name1="new", name2="old")
   return (df)
 end
 
+function diff(name, loc1, loc2; name1="new", name2="old")
+  df1 = var(name, loc1)
+  df2 = var(name, loc2)
+  df = diff(df1, df2; name1, name2)
+end
+
 function join_vars(df1::DataFrame, df2::DataFrame)
   dims = intersect(names(df1), names(df2))
   dims = dims[dims.!="Value"]
@@ -238,7 +244,7 @@ function comparedata(data, data_b, fnames)
     j = data[i]
     j_b = data_b[i]
     name = fnames.var[i]
-    print(i, name)
+    print(rpad(i, 6), name)
     if eltype(j) == String
       print(" is a string\n")
     else
@@ -254,5 +260,25 @@ function comparedata(data, data_b, fnames)
   df[sortperm(df.PDiff, rev=true), :]
   return (df)
 end # compare function
+
+function unzip_dbas(DATA_FOLDER, dbas)
+  dir, subdir = splitdir(DATA_FOLDER)
+  # zip = joinpath(DATA_FOLDER, "dba.zip")
+  zip = joinpath(subdir, "dba.zip")
+  dbas = lowercase.(dbas)
+  dba = dbas[1]
+  n = length(dba)
+  suffix = dba[(n-3):end]
+  if suffix != ".dba"
+    dbas .*= ".dba"
+  end
+  if sum(dbas .== "2020db.dba") == 0
+    push!(dbas, "2020db.dba")
+  end
+  for dba in dbas
+    cmd = Cmd(`wzunzip -d -o $zip $subdir $dba`, dir=dir)
+    run(cmd)
+  end
+end
 
 end # module JuliaCompare
