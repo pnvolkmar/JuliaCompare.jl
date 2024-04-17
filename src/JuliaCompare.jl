@@ -68,12 +68,14 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   e2020db = joinpath(DATA_FOLDER, "2020db.dba")
   eg = joinpath(DATA_FOLDER, "EGInput.dba")
 
-  if contains(cfilename, "input") | contains(cfilename, "output")
+  if contains(lowercase(cfilename), "input") | contains(lowercase(cfilename), "output")
     letter = SubString(cfilename, 1, 1)
     cfile = joinpath(DATA_FOLDER, join([letter, "input.dba"]))
   else
     cfile = e2020db
   end
+  print("cfilename is: ", cfilename, " cfile is: ", cfile, "\n")
+
 
   makepairs = function (d, cfile, e2020db)
     if d in sets
@@ -132,10 +134,12 @@ end
 function find_var(needle, vars; exact::Bool=false)
   if exact
     i = findall(lowercase.(vars.Variable) .== lowercase(needle))
+    j = findall(lowercase.(vars.Database) .* "/" .* lowercase.(vars.Variable) .== lowercase(needle))
+    i = [i; j]
   else
     i = findall(occursin.(lowercase(needle), lowercase.(vars.Variable)))
   end
-  vars[i, 1:4]
+  vars[i, 1:5]
 end
 
 const Canada = ["Ontario", "Quebec", "British Columbia", "Alberta", "Manitoba",
@@ -275,10 +279,20 @@ function unzip_dbas(DATA_FOLDER, dbas)
   if sum(dbas .== "2020db.dba") == 0
     push!(dbas, "2020db.dba")
   end
+  other_sets = contains.(lowercase.(dbas), "output")
+  address = unique(lowercase.(dbas[other_sets]))
+  for a in address
+    letter = SubString(a, 1, 1)
+    cfile = join([letter, "input.dba"])
+    push!(dbas, cfile)
+  end
   for dba in dbas
-    cmd = Cmd(`wzunzip -d -o $zip $subdir $dba`, dir=dir)
-    run(cmd)
+    if !isfile(joinpath(dir, subdir, dba))
+      cmd = Cmd(`wzunzip -d -o $zip $subdir $dba`, dir=dir)
+      run(cmd)
+    end
   end
 end
+
 
 end # module JuliaCompare
