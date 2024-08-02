@@ -68,7 +68,7 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   e2020db = joinpath(DATA_FOLDER, "2020db.dba")
   eg = joinpath(DATA_FOLDER, "EGInput.dba")
 
-  if contains(lowercase(cfilename), "input") | contains(lowercase(cfilename), "output")
+  if contains(lowercase(cfilename), "input") | contains(lowercase(cfilename), "output") | contains(lowercase(cfilename), "caldb")
     letter = SubString(cfilename, 1, 1)
     cfile = joinpath(DATA_FOLDER, join([letter, "input.dba"]))
   else
@@ -106,6 +106,14 @@ function var_id(i, vars, DATA_FOLDER)
   )
   if contains(vars.Dimensions[i], "Year")
     out.Year = parse.(Int64, out.Year)
+    if minimum(out.Year) < 1900
+      out.Year .+= 1984
+    end
+  end
+  if contains(vars.Dimensions[i], "OGUnit")
+    @rsubset! out :OGUnit != ""
+  elseif contains(vars.Dimensions[i], "Unit")
+    @rsubset! out :Unit != ""
   end
   return (out)
 end
@@ -142,9 +150,9 @@ function find_var(needle, vars; exact::Bool=false)
   vars[i, 1:5]
 end
 
-const Canada = ["Ontario", "Quebec", "British Columbia", "Alberta", "Manitoba",
-  "Saskatchewan", "New Brunswick", "Nova Scotia", "Newfoundland",
-  "Prince Edward Island", "Yukon Territory", "Northwest Territory", "Nunavut"
+const Canada = ["ON", "QC", "BC", "AB", "MB",
+  "SK", "NB", "NS", "NL",
+  "PI", "YT", "NT", "NV"
 ]
 
 function var(needle, vars, DATA_FOLDER)
@@ -193,19 +201,27 @@ function diff(name, loc1, loc2; name1="new", name2="old")
 end
 
 function join_vars(df1::DataFrame, df2::DataFrame)
+  data = names(df1)[end]
   dims = intersect(names(df1), names(df2))
   dims = dims[dims.!="Value"]
-  df = outerjoin(df1, df2, on=dims, makeunique=true)
+  df = leftjoin(df1, df2, on=dims, makeunique=true)
   values = [setdiff(names(df2), dims); setdiff(names(df1), dims)]
   for c ∈ eachcol(df[!, Symbol.(values)])
     replace!(c, missing => 0)
   end
+  # select!(df, names(df)[names(df).!=data], data)
   return (df)
 end
 
 function join_vars(df1::DataFrame, df2::DataFrame, df3::DataFrame)
   df = join_vars(df1, df2)
   df = join_vars(df, df3)
+  return (df)
+end
+
+function join_vars(df1::DataFrame, df2::DataFrame, df3::DataFrame, df4::DataFrame)
+  df = join_vars(df1, df2, df3)
+  df = join_vars(df, df4)
   return (df)
 end
 
@@ -224,7 +240,7 @@ function tops(df; dim="ECC", num=10)
   return (lst)
 end
 
-function plot_diff(data; dim="ECC", num=10)
+function plot_diff(data; dim="ECC", num=10, title="New Plot")
   df = deepcopy(data)
   ss = tops(df; dim, num)
   others = setdiff(df[:, dim], ss)
@@ -233,8 +249,31 @@ function plot_diff(data; dim="ECC", num=10)
   cats = categorical(df[:, dim])
   colors = distinguishable_colors(length(unique(cats)))
   fig = Figure()
-  ax = Axis(fig[1, 1])
+  ax = Axis(fig[1, 1]; title=title)
   barplot!(ax, df.Year, df.Diff, stack=levelcode.(cats), color=colors[levelcode.(cats)])
+  labels = levels(cats)
+  # return (labels)
+  elements = [PolyElement(polycolor=colors[i]) for i in 1:length(labels)]
+  Legend(fig[1, 2], elements, labels, dim)
+  display(fig)
+end
+
+function plot_sets(data; dim="ECC", num=10, title="New Plot")
+  df = deepcopy(data)
+  l = last(names(df))
+  l_symbol = Symbol(l)
+  @rsubset! df $l != 0
+  df2 = @by(df, [Symbol(dim)], :Value = sum(abs.($l)))
+  df2 = @orderby(df2, -:Value)
+  ss = first(df2[!, dim], num)
+  others = setdiff(df[:, dim], ss)
+  df[in.(df[:, dim], Ref(others)), dim] .= "Other"
+  df = @by(df, [Symbol(dim), :Year], $l = sum($l))
+  cats = categorical(df[:, dim])
+  colors = distinguishable_colors(length(unique(cats)))
+  fig = Figure()
+  ax = Axis(fig[1, 1]; title=title)
+  barplot!(ax, df.Year, df[:, l], stack=levelcode.(cats), color=colors[levelcode.(cats)])
   labels = levels(cats)
   # return (labels)
   elements = [PolyElement(polycolor=colors[i]) for i in 1:length(labels)]
@@ -294,5 +333,26 @@ function unzip_dbas(DATA_FOLDER, dbas)
   end
 end
 
+function archive_list(Year::Int)
+  if Year == 20204
+    fileloc = raw"\\Scarlet\g\Archives\2020 Canada\2024"
+  elseif Year == 2023
+    fileloc = raw"\\Blue\e\Archives\2020 Canada\2023"
+  end
+  list = readdir(fileloc)
+end
+
+function archive_list()
+  archive_list(2024)
+end
+
+function archive_search(Year::Int, Needle::String)
+  list = archive_list(Year::Int)
+  return (list[occursin.(lowercase(Needle), lowercase.(list))])
+end
+
+function archive_search(Needle::String)
+  archive_search(2024, Needle)
+end
 
 end # module JuliaCompare
