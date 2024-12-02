@@ -1,21 +1,200 @@
+using Revise
 import JuliaCompare as J
 import PromulaDBA as P
 import JuliaCompare: db_files, Canada
 using CSV, DataFrames, DataFramesMeta
 
-BASE_FOLDER = raw"\\Pink\c\2020CanadaWalnut"
-BASE_FOLDER2 = raw"\\Pink\c\2020CanadaWalnut"
-SCENARIO1 = "Ref24"
-SCENARIO2 = "Process2"
+BASE_FOLDER = raw"\\Pink\c\2020CanadaBanyan"
+BASE_FOLDER2 = raw"\\Purple\c\2020BetaJulia"
+SCENARIO1 = "Ref23"
+SCENARIO2 = "Ref23"
 
 CODE_FOLDER = joinpath(BASE_FOLDER, "Engine")
-DATA_FOLDER1 = joinpath(BASE_FOLDER, "2020Model", SCENARIO1)
-DATA_FOLDER2 = joinpath(BASE_FOLDER, "2020Model", SCENARIO2)
+DATA_FOLDER1 = joinpath(BASE_FOLDER, "2020Model")
+DATA_FOLDER2 = joinpath(BASE_FOLDER2, "2020Model", SCENARIO2)
 E2020_Folder = joinpath(BASE_FOLDER, "2020Model")
 
 vars = J.list_vars(CODE_FOLDER, DATA_FOLDER1, db_files);
 loc1 = J.Loc(vars, DATA_FOLDER1);
-loc2 = J.Loc(vars, DATA_FOLDER2);
+loc2 = joinpath(DATA_FOLDER2, "database.hdf5");
+loc3 = joinpath(DATA_FOLDER1, "database.hdf5");
+
+df = J.var("SOutput/NcFPol", loc3) # No difference in lubricants co2
+df2 = J.var("SOutput/NcFPol", loc2)
+@rsubset! df :Year > 2020 :Year < 2051 :ECC ∈ ["Passenger", "Freight"] :Fuel == "Lubricants" :Poll == "CO2"
+@rsubset! df2 :Year > 2020 :Year < 2051 :ECC ∈ ["Passenger", "Freight"] :Fuel == "Lubricants" :Poll == "CO2"
+df3 = J.diff(df, df2; name1="Promula", name2="Julia")
+@rsubset! df3 :Diff != 0
+@rsubset df3 :Year == 2050 :Area == "AB" :ECC == "Passenger"
+
+# Row │ Fuel        ECC        Poll    Area    Year   Promula   Julia     Diff    
+# ────┼───────────────────────────────────────────────────────────────────────────
+#   1 │ Lubricants  Passenger  CO2     AB       2050   3801.08       0.0  3801.08
+
+df = J.var("TOutput/FsPol", loc3) # No difference in lubricants co2
+df2 = J.var("TOutput/FsPol", loc2)
+@rsubset! df :Year > 2020 :Year < 2051 :EC ∈ ["Passenger", "Freight"] :Fuel == "Lubricants" :Poll == "CO2"
+@rsubset! df2 :Year > 2020 :Year < 2051 :EC ∈ ["Passenger", "Freight"] :Fuel == "Lubricants" :Poll == "CO2"
+df3 = J.diff(df, df2; name1="Promula", name2="Julia")
+@rsubset df3 :Year == 2050 :Area == "AB" :EC == "Passenger"
+# julia> @rsubset df3 :Year == 2050 :Area == "AB" :EC == "Passenger" :Promula != 0
+# 0×9 DataFrame
+#  Row │ Fuel    Tech    EC      Poll    Area    Year   Promula   Julia     Diff    
+#      │ String  String  String  String  String  Int64  Float64?  Float64?  Float64 
+# ─────┴────────────────────────────────────────────────────────────────────────────
+# Nothing to see here!
+#
+J.plot_diff(df3; dim="Poll", num=3)
+J.plot_diff(df3; dim="Area", num=3)
+J.plot_diff(df3; dim="H2Tech", num=3)
+
+totpol_j = J.var("TotPol", loc1)
+totpol_p = J.var("SOutput/TotPol", loc2)
+totpol = J.diff(totpol_j, totpol_p; name1="Julia", name2="Promula")
+@rsubset! totpol :Diff != 0 :Year == 2050
+@by(totpol, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+
+polconv = J.var("PolConv", loc1)
+ECCKey = J.var("ECCKey", loc1)
+
+EnPol = J.diff("SOutput/EnPol", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! EnPol :Year == 2050 :ECC == "Steam"
+@by(EnPol, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+
+MEPol = J.diff("SOutput/MEPol", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MEPol :Year == 2050 :ECC == "Fertilizer" :Area ∈ Canada
+@by(MEPol, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MEPol; dim="Area", num=3) # AB, ON, SK
+J.plot_diff(MEPol; dim="Poll", num=1) # N2O
+
+MEReduce = J.diff("SOutput/MEReduce", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MEReduce :Year == 2050 :ECC == "Fertilizer" :Area ∈ Canada
+@by(MEReduce, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MEReduce; dim="Area", num=3) # AB, ON, SK
+J.plot_diff(MEReduce; dim="Poll", num=1) # N2O
+
+MERP = J.diff("MEOutput/MERP", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MERP :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(MERP, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MERP; dim="Area", num=10) # Most Areas
+J.plot_diff(MERP; dim="Poll", num=5) # N2O and HFC
+@by(MERP, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset MERP :Area == "AB" :Poll == "N2O"
+
+MEC0 = J.diff("MEInput/MEC0", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MEC0 :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(MEC0, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MEC0; dim="Area", num=10) # Most Areas
+J.plot_diff(MEC0; dim="Poll", num=5) # N2O and HFC
+@by(MEC0, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset MEC0 :Area == "AB" :Poll == "N2O"
+
+MEPrice = J.diff("MEOutput/MEPrice", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MEPrice :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(MEPrice, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MEPrice; dim="Area", num=10) # Most Areas
+J.plot_diff(MEPrice; dim="Poll", num=5) # N2O and HFC
+@by(MEPrice, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset MEPrice :Area == "AB" :Poll ∈ ["N2O", "HFC"]
+
+MEPriceSw = J.diff("MEInput/MEPriceSw", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MEPriceSw :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(MEPriceSw, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MEPriceSw; dim="Area", num=10) # Most Areas
+J.plot_diff(MEPriceSw; dim="Poll", num=5) # N2O and HFC
+@by(MEPriceSw, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset MEPriceSw :Area == "AB" :Poll ∈ ["N2O", "HFC"]
+
+PolConv = J.diff("SInput/PolConv", loc1, loc2; name1="Promula", name2="Julia")
+sum(abs.(PolConv.Diff))
+PCost = J.diff("SOutput/PCost", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! PCost :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(PCost, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(PCost; dim="Area", num=10) # Most Areas
+J.plot_diff(PCost; dim="Poll", num=5) # N2O and HFC
+@by(PCost, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset PCost :Area == "AB" :Poll ∈ ["N2O", "HFC"]
+
+ECoverage = J.diff("SInput/ECoverage", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! ECoverage :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(ECoverage, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(ECoverage; dim="Area", num=10) # Most Areas
+J.plot_diff(ECoverage; dim="Poll", num=5) # N2O and HFC
+@by(ECoverage, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset ECoverage :Area == "AB" :Poll ∈ ["N2O", "HFC"] :PCov == "Process"
+
+PCostExo = J.diff("SInput/PCostExo", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! PCostExo :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+sum(abs.(PCostExo.Diff))
+@by(PCostExo, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(PCostExo; dim="Area", num=10) # Most Areas
+J.plot_diff(PCostExo; dim="Poll", num=5) # N2O and HFC
+@by(PCostExo, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset PCostExo :Area == "AB" :Poll ∈ ["N2O", "HFC"]
+
+FPCFSObligated = J.diff("SOutput/FPCFSObligated", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! FPCFSObligated :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+sum(abs.(FPCFSObligated.Diff))
+@by(FPCFSObligated, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(FPCFSObligated; dim="Area", num=10) # Most Areas
+J.plot_diff(FPCFSObligated; dim="Poll", num=5) # N2O and HFC
+@by(FPCFSObligated, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+@rsubset FPCFSObligated :Area == "AB" :Poll ∈ ["N2O", "HFC"]
+
+MEIRP = J.diff("MEOutput/MEIRP", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MEIRP :ECC == "Fertilizer" :Area == "AB" :Year == 2050
+@by(MEIRP, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MEIRP; dim="Area", num=10) # Most Areas
+J.plot_diff(MEIRP; dim="Poll", num=5) # N2O and HFC
+@by(MEIRP, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+
+MERPStd = J.diff("MERPStd", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! MERPStd :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(MERPStd, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(MERPStd; dim="Area", num=10) # Most Areas
+J.plot_diff(MERPStd; dim="Poll", num=5) # N2O and HFC
+@by(MERPStd, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+
+RPolicy = J.diff("SOutput/RPolicy", loc1, loc2; name1="Promula", name2="Julia")
+@rsubset! RPolicy :ECC == "Fertilizer" :Area ∈ Canada :Year >= 2020
+@by(RPolicy, by = ["ECC"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(:Diff))
+J.plot_diff(RPolicy; dim="Area", num=10) # Most Areas
+J.plot_diff(RPolicy; dim="Poll", num=5) # N2O and HFC
+@by(RPolicy, by = ["Year"], :Julia = sum(:Julia), :Promula = sum(:Promula), :Diff = sum(abs(:Diff)))
+
+MEIRP
+PCC = J.var("IOutput/PCC", loc1)
+df = @rsubset PCC isnan(:PCC)
+@by(df, by = ["Tech", "EC", "Area"], :PCC = sum(:PCC))
+
+PCCPrice = J.var("IOutput/PCCPrice", loc1)
+df = @rsubset PCCPrice isnan(:PCCPrice)
+@by(df, by = ["Tech", "EC", "Area"], :PCCPrice = sum(:PCCPrice))
+
+#PCCPoll, PCTC, and PEEPrice don't have NaNs
+PCTC = J.var("IOutput/PCTC", loc1)
+df = @rsubset PCTC isnan(:PCTC)
+PEEPrice = J.var("IOutput/PEEPrice", loc1)
+df = @rsubset PEEPrice isnan(:PEEPrice)
+
+J.filter_ns(PCTC)
+J.filter_ne(PCTC)
+
+J.var("IECFPFuel", loc1)
+ECFP = J.diff("IOutput/ECFPFuel", loc1, loc2; name1="Ref24", name2="Ref24A")
+@rsubset ECFP :Fuel ∈ ["Hydrogen", "NaturalGas"] :EC == "Petroleum" :Year == 2023 :Area == "AB"
+
+J.var("FPCFS", loc1)
+FPCFS = J.diff("IOutput/FPCFS", loc1, loc2; name1="Ref24", name2="Ref24A")
+@rsubset FPCFS :Fuel ∈ ["Hydrogen", "NaturalGas"] :EC == "Petroleum" :Year == 2023 :Area == "AB"
+
+J.var("DmFrac", loc1)
+DmFrac = J.diff("IOutput/DmFrac", loc1, loc2; name1="Ref24", name2="Ref24A")
+@rsubset DmFrac :Fuel ∈ ["Hydrogen", "NaturalGas"] :EC == "Petroleum" :Year == 2023 :Area == "AB"
+
+J.var("DmFracMSF", loc1)
+DmFracMSF = J.diff("IOutput/DmFracMSF", loc1, loc2; name1="Ref24", name2="Ref24A")
+@rsubset DmFracMSF :Fuel ∈ ["Hydrogen", "NaturalGas"] :EC == "Petroleum" :Year == 2023 :Area == "AB"
 
 undmd = J.var("undmd", loc1)
 uncogen = J.var("uncogen", loc1)

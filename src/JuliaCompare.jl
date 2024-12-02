@@ -5,8 +5,50 @@ using DataFrames, Chain, DataFramesMeta
 import PromulaDBA as P
 using Makie, CairoMakie
 using Colors, CategoricalArrays
+import SmallModel: ReadDisk
 
 greet() = print("Hello Randy")
+
+function filter_ns(df_in)
+  df = copy(df_in)
+  if "Area" ∈ names(df)
+    @rsubset! df :Area ∈ ["NS", "PE", "NB"]
+  end
+  if "Enduse" ∈ names(df)
+    @rsubset! df :Enduse == "Heat"
+  end
+  if "EC" ∈ names(df)
+    @rsubset! df :EC == "IronSteel"
+  end
+  if "Tech" ∈ names(df)
+    @rsubset! df :Tech == "Biomass"
+  end
+  if "Year" ∈ names(df)
+    @rsubset! df :Year == 2022
+  end
+  return (df)
+end
+
+function filter_ne(df_in)
+  df = copy(df_in)
+  if "Area" ∈ names(df)
+    @rsubset! df :Area ∈ ["NEng", "MAtl"]
+  end
+  if "Enduse" ∈ names(df)
+    @rsubset! df :Enduse == "Heat"
+  end
+  if "EC" ∈ names(df)
+    @rsubset! df :EC == "Petrochemicals"
+  end
+  if "Tech" ∈ names(df)
+    @rsubset! df :Tech ∈ ["Electric", "Gas", "Coal", "Oil", "LPG"]
+  end
+  if "Year" ∈ names(df)
+    @rsubset! df :Year == 2022
+  end
+  return (df)
+end
+
 
 struct Loc
   vars::DataFrame
@@ -164,7 +206,7 @@ function var(needle, vars, DATA_FOLDER)
   if nrow(temp) == 1
     return (var_id(temp.RowID[1], vars, DATA_FOLDER))
   elseif nrow(temp) == 0
-    print(Needle, " not found in vars, perhaps your variable is in the list below\n")
+    print(needle, " not found in vars, perhaps your variable is in the list below\n")
     temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
     return (temp2)
   elseif unique(temp, [:Variable, :Dimensions]) == 1
@@ -179,6 +221,10 @@ end
 function var(needle, loc::Loc)
   (; vars, DATA_FOLDER) = loc
   return (var(needle, vars, DATA_FOLDER))
+end
+
+function var(needle, loc::String)
+  return (ReadDisk(DataFrame, loc, needle))
 end
 
 function diff(df1, df2; name1="new", name2="old")
@@ -334,8 +380,8 @@ function unzip_dbas(DATA_FOLDER, dbas)
 end
 
 function archive_list(Year::Int)
-  if Year == 20204
-    fileloc = raw"\\Scarlet\g\Archives\2020 Canada\2024"
+  if Year == 2024
+    fileloc = raw"\\Scarlet\g\Archives\2020 Canada\2024 thru August"
   elseif Year == 2023
     fileloc = raw"\\Blue\e\Archives\2020 Canada\2023"
   end
