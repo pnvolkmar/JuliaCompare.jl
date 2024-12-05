@@ -1,7 +1,7 @@
 module JuliaCompare
 
 import CSV
-using DataFrames, Chain, DataFramesMeta
+using DataFrames, Chain, DataFramesMeta, HDF5
 import PromulaDBA as P
 using Makie, CairoMakie
 using Colors, CategoricalArrays
@@ -50,9 +50,15 @@ function filter_ne(df_in)
 end
 
 
-struct Loc
+struct Loc_p
   vars::DataFrame
   DATA_FOLDER::String
+  name::String
+end
+struct Loc_j
+  vars::DataFrame
+  HDF5_path::String
+  name::String
 end
 
 const db_files = ["2020DB", "CCalDB", "CInput", "COutput", "ECalDB", "EGCalDB",
@@ -134,6 +140,26 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   DataFrame(Variable=vars, Dimensions=dims, Description=desc, Database=cfilename, DPairs=dim_pairs)
 end
 
+function list_vars(file::String)
+  data = Vector{NamedTuple{(:Variable, :Database),Tuple{String,String}}}()
+  sizehint!(data, 5000)
+
+  h5open(file, "r") do fid
+    for name in keys(fid)
+      obj = fid[name]
+      if isa(obj, HDF5.Dataset)
+        push!(data, (Variable=name, Database="/"))
+      elseif isa(obj, HDF5.Group)
+        for gname in keys(obj)
+          push!(data, (Variable=gname, Database=name))
+        end
+      end
+    end
+  end
+
+  return DataFrame(data)
+end
+
 function var_id(i, vars, DATA_FOLDER)
   fname = joinpath(DATA_FOLDER, string(vars.Database[i], ".dba"))
 
@@ -160,7 +186,7 @@ function var_id(i, vars, DATA_FOLDER)
   return (out)
 end
 
-function var_id(i::Int, loc::Loc)
+function var_id(i::Int, loc::Loc_p)
   var_id(i, loc.vars, loc.DATA_FOLDER)
 end
 
@@ -218,13 +244,26 @@ function var(needle, vars, DATA_FOLDER)
   end
 end
 
-function var(needle, loc::Loc)
+function var(needle, loc::Loc_p)
   (; vars, DATA_FOLDER) = loc
   return (var(needle, vars, DATA_FOLDER))
 end
 
-function var(needle, loc::String)
-  return (ReadDisk(DataFrame, loc, needle))
+function var(needle, loc::Loc_j)
+  (; HDF5_path, vars) = loc
+  if contains(needle, "/")
+    return (ReadDisk(DataFrame, loc.HDF5_path, needle))
+  else
+    i = findall(lowercase.(vars.Variable) .== lowercase(needle))
+    if sum(i) == 1
+      needle = vars.Database[i] * "/" * needle
+      var(needle, loc)
+    else
+      print("Multiple variables exist, please specify database")
+      df = vars[i, :]
+      print(df)
+    end
+  end
 end
 
 function diff(df1, df2; name1="new", name2="old")
@@ -240,7 +279,7 @@ function diff(df1, df2; name1="new", name2="old")
   return (df)
 end
 
-function diff(name, loc1, loc2; name1="new", name2="old")
+function diff(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
   df1 = var(name, loc1)
   df2 = var(name, loc2)
   df = diff(df1, df2; name1, name2)

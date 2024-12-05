@@ -5,7 +5,7 @@ import JuliaCompare: db_files, Canada
 using CSV, DataFrames, DataFramesMeta
 
 BASE_FOLDER = raw"\\Pink\c\2020CanadaBanyan"
-BASE_FOLDER2 = raw"\\Purple\c\2020BetaJulia"
+BASE_FOLDER2 = raw"\\Pink\c\2020BetaJulia"
 SCENARIO1 = "Ref23"
 SCENARIO2 = "Ref23"
 
@@ -13,9 +13,12 @@ CODE_FOLDER = joinpath(BASE_FOLDER, "Engine")
 DATA_FOLDER1 = joinpath(BASE_FOLDER, "2020Model")
 DATA_FOLDER2 = joinpath(BASE_FOLDER2, "2020Model", SCENARIO2)
 E2020_Folder = joinpath(BASE_FOLDER, "2020Model")
+HDF5_path = joinpath(DATA_FOLDER2, "database.hdf5")
 
 vars = J.list_vars(CODE_FOLDER, DATA_FOLDER1, db_files);
-loc1 = J.Loc(vars, DATA_FOLDER1);
+vars_j = J.list_vars(HDF5_path)
+loc1 = J.Loc(vars, DATA_FOLDER1, type="Promula", name="Banyan");
+loc2 = J.Loc(vars_j, HDF5_path, type="Julia", name="Julia");
 loc2 = joinpath(DATA_FOLDER2, "database.hdf5");
 loc3 = joinpath(DATA_FOLDER1, "database.hdf5");
 
