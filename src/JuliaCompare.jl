@@ -197,7 +197,7 @@ function get_data(i, vars, DATA_FOLDER)
 end
 
 function list_vars(CODE_FOLDER, DATA_FOLDER, db_files)
-  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, false), db_files)
+  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, true), db_files)
   vars = vcat(dfs...)
 
   vars.RowID = 1:size(vars, 1)
