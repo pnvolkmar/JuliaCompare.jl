@@ -9,22 +9,25 @@ import SmallModel: ReadDisk
 
 greet() = print("Hello Randy")
 
-function filter_ns(df_in)
+function filter_bm(df_in)
   df = copy(df_in)
   if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["NS", "PE", "NB"]
+    @rsubset! df :Area ∈ ["ON"]
   end
-  if "Enduse" ∈ names(df)
-    @rsubset! df :Enduse == "Heat"
+  if "FuelEP" ∈ names(df)
+    @rsubset! df :FuelEP == "Biomass"
   end
-  if "EC" ∈ names(df)
-    @rsubset! df :EC == "IronSteel"
+  if "Fuel" ∈ names(df)
+    @rsubset! df :Fuel == "Biomass"
   end
-  if "Tech" ∈ names(df)
-    @rsubset! df :Tech == "Biomass"
+  if "ECC" ∈ names(df)
+    @rsubset! df :EC == "UtilityGen"
+  end
+  if "Poll" ∈ names(df)
+    @rsubset! df :Poll == "NOX"
   end
   if "Year" ∈ names(df)
-    @rsubset! df :Year == 2022
+    @rsubset! df :Year == 1996
   end
   return (df)
 end
@@ -232,14 +235,15 @@ function var(needle, vars, DATA_FOLDER)
   if nrow(temp) == 1
     return (var_id(temp.RowID[1], vars, DATA_FOLDER))
   elseif nrow(temp) == 0
-    print(needle, " not found in vars, perhaps your variable is in the list below\n")
+    println(needle, " not found in vars, perhaps your variable is in the list below\n")
     temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
-    return (temp2)
+    println(vars[temp2,:])
+    error("Variable not found")
   elseif unique(temp, [:Variable, :Dimensions]) == 1
     print("Combining ", nrow(temp), "variables")
     return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
   else
-    print(needle, " could have several values, use var_id to select one of the below\n")
+    println(needle, " could have several values, use var_id to select one of the below\n")
     return (temp)
   end
 end
@@ -255,13 +259,16 @@ function var(needle, loc::Loc_j)
     return (ReadDisk(DataFrame, loc.HDF5_path, needle))
   else
     i = findall(lowercase.(vars.Variable) .== lowercase(needle))
-    if sum(i) == 1
-      needle = vars.Database[i] * "/" * needle
+    if length(i) == 1
+      database = vars.Database[i][1]
+      needle = string(database,"/",needle)
+      println(needle)
       var(needle, loc)
     else
       print("Multiple variables exist, please specify database")
       df = vars[i, :]
       print(df)
+      error("Please specify a database")
     end
   end
 end
