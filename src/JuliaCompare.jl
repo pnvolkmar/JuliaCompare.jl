@@ -11,7 +11,53 @@ include("UnCodeMapping.jl")
 
 greet() = print("Hello Randy")
 
-function filter_bm(df_in)
+function f_on(df_in)
+  df = copy(df_in)
+  if "Area" ∈ names(df)
+    @rsubset! df :Area ∈ ["ON"]
+  end
+  # if "Enduse" ∈ names(df)
+  #   @rsubset! df :Enduse == "OthSub"
+  # end
+  # if "EC" ∈ names(df)
+  #   @rsubset! df :EC == "Offices"
+  # end
+  # if "Tech" ∈ names(df)
+  #   @rsubset! df :Tech == "LPG"
+  # end
+  if "Year" ∈ names(df)
+    @rsubset! df :Year ∈ [2020]
+  end
+  if "Month" ∈ names(df)
+    @rsubset! df :Month ∈ ["Winter"]
+  end
+  if "Day" ∈ names(df)
+    @rsubset! df :Day ∈ ["Peak"]
+  end
+  if "Diff" ∈ names(df)
+    @rsubset! df abs(:Diff) > 1e-7
+  end
+  return (df)
+end
+
+function f_al(df_in)
+  df = copy(df_in)
+  if "Area" ∈ names(df)
+    @rsubset! df :Area ∈ ["QC"]
+  end
+  if "Year" ∈ names(df)
+    @rsubset! df :Year ∈ [1990]
+  end
+  if "EC" ∈ names(df)
+    @rsubset! df :EC ∈ ["Aluminum"]
+  end
+  if "ECC" ∈ names(df)
+    @rsubset! df :ECC ∈ ["Aluminum"]
+  end
+  return (df)
+end
+
+function filter_85(df_in)
   df = copy(df_in)
   if "Area" ∈ names(df)
     @rsubset! df :Area ∈ ["ON"]
@@ -31,25 +77,69 @@ function filter_bm(df_in)
   if "Year" ∈ names(df)
     @rsubset! df :Year == 1996
   end
+  if "EC" ∈ names(df)
+    @rsubset! df :EC == "Offices"
+  end
+  if "ECC" ∈ names(df)
+    @rsubset! df :ECC == "Offices"
+  end
+  if "Tech" ∈ names(df)
+    @rsubset! df :Tech == "LPG"
+  end
+  if "Year" ∈ names(df)
+    @rsubset! df :Year ∈ [1985]
+  end
+  if "Diff" ∈ names(df)
+    @rsubset! df abs(:Diff) >= 1e-7
+  end
   return (df)
 end
 
-function filter_ne(df_in)
+function filter_bm(df_in)
   df = copy(df_in)
   if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["NEng", "MAtl"]
+    @rsubset! df :Area ∈ ["ON"]
   end
   if "Enduse" ∈ names(df)
-    @rsubset! df :Enduse == "Heat"
+    @rsubset! df :Enduse ∈ ["HW","OthSub"]
   end
   if "EC" ∈ names(df)
-    @rsubset! df :EC == "Petrochemicals"
+    @rsubset! df :EC == "Offices"
+  end
+  if "ECC" ∈ names(df)
+    @rsubset! df :ECC == "Offices"
   end
   if "Tech" ∈ names(df)
-    @rsubset! df :Tech ∈ ["Electric", "Gas", "Coal", "Oil", "LPG"]
+    @rsubset! df :Tech ∈ ["Biomass"]
   end
   if "Year" ∈ names(df)
-    @rsubset! df :Year == 2022
+    @rsubset! df :Year ∈ [1985,2000]
+  end
+  return (df)
+end
+
+function f_og(df_in)
+  df = copy(df_in)
+  if "Area" ∈ names(df)
+    @rsubset! df :Area ∈ ["AB"]
+  end
+  # if "Enduse" ∈ names(df)
+  #   @rsubset! df :Enduse ∈ ["HW","OthSub"]
+  # end
+  if "EC" ∈ names(df)
+    @rsubset! df :EC == "ConventionalGasProduction"
+  end
+  if "ECC" ∈ names(df)
+    @rsubset! df :ECC == "ConventionalGasProduction"
+  end
+  # if "Tech" ∈ names(df)
+  #   @rsubset! df :Tech ∈ ["Biomass"]
+  # end
+  if "Year" ∈ names(df)
+    @rsubset! df :Year ∈ [2000]
+  end
+  if "Diff" ∈ names(df)
+    @rsubset! df abs(:Diff) >= 1e-7
   end
   return (df)
 end
@@ -226,7 +316,7 @@ function find_var(needle, vars; exact::Bool=false)
   else
     i = findall(occursin.(lowercase(needle), lowercase.(vars.Variable)))
   end
-  vars[i, 1:5]
+  vars[i, :]
 end
 
 const Canada = ["ON", "QC", "BC", "AB", "MB",
@@ -247,6 +337,7 @@ function var(needle, vars, DATA_FOLDER)
     temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
     println(vars[temp2,:])
     error("Variable not found")
+    return (vars[temp2,1:5])
   elseif unique(temp, [:Variable, :Dimensions]) == 1
     print("Combining ", nrow(temp), "variables")
     return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
@@ -264,7 +355,18 @@ end
 function var(needle, loc::Loc_j)
   (; HDF5_path, vars) = loc
   if contains(needle, "/")
-    return (ReadDisk(DataFrame, loc.HDF5_path, needle))
+    df = ReadDisk(DataFrame, loc.HDF5_path, needle)
+    if "TimeP" ∈ names(df)
+      if '(' ∉ df.TimeP[1]
+        df.TimeP = map(tp -> "TimeP($(match(r"\d+", tp).match))", df.TimeP)
+      end
+    end
+    if "TimeA" ∈ names(df)
+      if '(' ∉ df.TimeA[1]
+        df.TimeA = map(tp -> "TimeA($(match(r"\d+", tp).match))", df.TimeA)
+      end
+    end
+    return (df)
   else
     i = findall(lowercase.(vars.Variable) .== lowercase(needle))
     if length(i) == 1
