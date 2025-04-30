@@ -7,8 +7,8 @@ using CSV, DataFrames, DataFramesMeta
 
 BASE_FOLDER = raw"\\Silver\c\2020CanadaSpruce"
 BASE_FOLDER2 = raw"\\Silver\c\2020CanadaTanoak"
-SCENARIO1 = ""
-SCENARIO2 = ""
+SCENARIO1 = "Ref24"
+SCENARIO2 = "Ref24"
 
 CODE_FOLDER = joinpath(BASE_FOLDER, "Engine")
 DATA_FOLDER1 = joinpath(BASE_FOLDER, "2020Model")
@@ -25,31 +25,100 @@ loc1 = J.Loc_p(vars, DATA_FOLDER1, "Spruce");
 loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
 
 EuFPol = J.diff("EuFPol", loc1, loc2)
-@rsubset EuFPol :FuelEP == "Biomass"
-@rsubset! EuFPol :FuelEP == "Biomass"
-select!(EuFPol, Not([:FuelEP]))
-@rsubset! EuFPol :Diff != 0
+@rsubset! EuFPol :Area ∈ Canada
+J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
+# J.plot_diff(@rsubset EuFPol :FuelEP == "Biomass"; dim="ECC", num=10, title="Biomass diffs by ECC")
 
-J.plot_diff(EuFPol; dim="ECC", num=10, title="Biomass diffs by ECC")
+
+@rsubset! EuFPol :ECC == "UtilityGen"
+# Almost all Natural Gas in the future and Coal in the past
+J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
+# All CO2 in the future and SOX/NOX in the past
+J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
+# SK, ON, AB are the biggest contributors, though many are present
+J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
+
+
+# TotPol = J.diff("TotPol", loc1, loc2)
+# J.plot_diff(TotPol; dim="ECC", num=10, title="TotPol diffs by ECC")
+
+# @rsubset! TotPol :ECC == "UtilityGen"
+# J.plot_diff(TotPol; dim="FuelEP", num=10, title="Biomass diffs by FuelEP") # Almost all Natural Gas
+# J.plot_diff(TotPol; dim="Poll", num=10, title="TotPol diffs by Poll") # All CO2
+# J.plot_diff(TotPol; dim="Area", num=10, title="TotPol diffs by Area") # Mostly CA a little in Mtn
 
 # UtilityGen appears to have a lot of historic issues. Let's tackle that first.
 
-@rsubset! EuFPol :ECC == "UtilityGen"
+UnPolGross_p = P.data(joinpath(DATA_FOLDER1,"EGOutput3.dba"),"UnPolGross")
+db = loc2.HDF5_path
+UnPolGross = M.ReadDisk(db, "EGOutput/UnPolGross")
+UnArea = M.ReadDisk(db,"EGInput/UnArea")
+UnCode = M.ReadDisk(db,"EGInput/UnCode")
+UnCode_p = P.data(joinpath(DATA_FOLDER1,"EGInput.dba"), "UnCode")
+ECC = M.ReadDisk(db,"SInput/ECC")
+# We have an issue with UnCode
+Codes = DataFrame(Spruce = UnCode_p, Tanoak = UnCode, Agree = UnCode .== UnCode_p)
+@rsubset! Codes :Spruce != "" && :Tanoak != "Null"
+@rsubset Codes :Agree == false
+Codes = J.reconcile_codes(Codes)
+@rsubset Codes :MatchAfterTransform == false
 
-J.plot_diff(@rsubset EuFPol :Year > 2025; dim="Poll", num=10, title="Biomass diffs by Poll")
 
-# issues across Polls with steady ratios historically concentrated in NOX and COX
-@rsubset! EuFPol :Poll == "NOX"
-J.plot_diff(EuFPol; dim="Area", num=10, title="Biomass diffs by Area")
+UnPlant_j = M.ReadDisk(db,"EGInput/UnPlant")
+UnPlant_p = P.data(joinpath(DATA_FOLDER1,"EGInput.dba"), "UnPlant")
+Plants = DataFrame(Spruce = UnPlant_p, Tanoak = UnPlant_j, Agree = UnPlant_j .== UnPlant_p)
+@rsubset! Plants :Spruce != "" && :Tanoak != "Null"
+@rsubset Plants :Agree == false
+# All pants Agree
+Codes.Plant = Plants.Spruce
 
-@rsubset EuFPol :Year == 1996
+@rsubset Codes :MatchAfterTransform == false
+@rsubset Codes :MatchAfterTransform == false :Plant == "OGCC"
 
-# issues not solely in ON, but ON is by far the worst offender
+FuelEP = M.ReadDisk(db,"E2020DB/FuelEP")
+Poll = M.ReadDisk(db, "E2020DB/Poll")
+import SmallModel: Select, Yr
+fuelep = Select(FuelEP, "NaturalGas")
+poll = Select(Poll, "CO2")
+year = Yr(2050)
+df = DataFrame(UnCode = UnCode, UnArea = UnArea, UnPlant = UnPlant_j,
+  Spruce = UnPolGross_p[:,fuelep,poll,year], Tanoak = UnPolGross[:,fuelep,poll,year])
 
-gd = groupby(EuFPol, :Year) 
-gd = combine(gd, :Diff .=> sum)
-gd = sort!(gd, :Diff_sum, rev=true)
+df.Diff = df.Spruce - df.Tanoak
+@rsubset! df :UnArea == "SK" abs(:Diff) > 1e-7
+sort(df, :UnPlant)
 
-# 1996 is the worst year
+UnEGA = J.diff("UnEGA", loc1, loc2)
+UnArea
+UnCode_p
+UnArea = DataFrame(Unit = UnCode_p, UnArea = UnArea)
+AddPlant = DataFrame(Unit = UnCode_p, UnPlant = UnPlant_p)
+UnEGA = DataFrames.leftjoin(UnEGA, UnArea, on = :Unit)
+UnEGA = DataFrames.leftjoin(UnEGA, AddPlant, on = :Unit)
 
-UnPol = J.diff("EGOutput/UnPol", loc1, loc2)
+UnRetire = M.ReadDisk(db,"EGInput/UnRetire", year)
+AddRetire = DataFrame(Unit = UnCode_p, UnRetire = UnRetire)
+UnEGA = DataFrames.leftjoin(UnEGA, AddRetire, on = :Unit)
+
+UnOnline = M.ReadDisk(db,"EGInput/UnOnLine")
+AddOnline = DataFrame(Unit = UnCode_p, UnOnline = UnOnline)
+UnEGA = DataFrames.leftjoin(UnEGA, AddOnline, on = :Unit)
+
+issues = @rsubset UnEGA :UnArea == "SK" :Year == 2039 abs(:Diff) > 1e-5
+issue_codes = unique(issues.Unit)
+
+UnGC = J.diff("UnGC", loc1, loc2)
+@rsubset UnGC :Year == 2039 :Unit ∈ issue_codes
+@rsubset UnGC :Unit == "SK_New_SolarPV" abs(:Diff) > 0 
+
+UnGCCR = J.diff("UnGCCR", loc1, loc2)
+@rsubset UnGCCR :Unit == "SK_New_SolarPV" abs(:Diff) > 0.01
+
+UnGCCE = J.diff("UnGCCE", loc1, loc2)
+@rsubset UnGCCE :Unit == "SK_New_SolarPV" abs(:Diff) > 0.01
+
+xUnGCCR = J.diff("xUnGCCR", loc1, loc2)
+@rsubset xUnGCCR :Unit == "SK_New_SolarPV"  abs(:Diff) > 0.01
+
+xUnGCCI = J.diff("xUnGCCI", loc1, loc2)
+@rsubset xUnGCCI :Unit == "SK_New_SolarPV" :Year > 2020 :Year <2040

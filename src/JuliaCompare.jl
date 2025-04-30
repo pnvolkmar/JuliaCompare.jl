@@ -7,6 +7,8 @@ using Makie, CairoMakie
 using Colors, CategoricalArrays
 import SmallModel: ReadDisk
 
+include("UnCodeMapping.jl")
+
 greet() = print("Hello Randy")
 
 function filter_bm(df_in)
@@ -80,7 +82,13 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   df = CSV.read(code_path, DataFrame, delim="\t", comment="*", header=[:x])
   a = occursin.("Define Variable", df.x)
   e = findall(a)
-  df = df[(e[1]+1):(e[2]-1), :]
+  e = reshape(e, 2, :)
+  e[1,:] .+= 1
+  e[2,:] .-= 1
+  rows = map(:,e[1,:],e[2,:])
+  rows = map(collect,rows)
+  rows = vcat(rows...)
+  df = df[rows, :]
   df = df[Not(occursin.(r"^\s*$", df.x)), :] # remove blank rows
 
   # Identify dimensions of variable from definition lines
