@@ -16,23 +16,23 @@ function f_on(df_in)
   if "Area" ∈ names(df)
     @rsubset! df :Area ∈ ["ON"]
   end
-  # if "Enduse" ∈ names(df)
-  #   @rsubset! df :Enduse == "OthSub"
-  # end
-  # if "EC" ∈ names(df)
-  #   @rsubset! df :EC == "Offices"
-  # end
-  # if "Tech" ∈ names(df)
-  #   @rsubset! df :Tech == "LPG"
-  # end
+  if "Fuel" ∈ names(df)
+    @rsubset! df :Fuel == "Ethanol"
+  end
+  if "FuelEP" ∈ names(df)
+    @rsubset! df :FuelEP == "Ethanol"
+  end
+  if "EC" ∈ names(df)
+    @rsubset! df :EC == "ResidentialOffRoad"
+  end
+  if "ECC" ∈ names(df)
+    @rsubset! df :ECC == "ResidentialOffRoad"
+  end
+  if "Poll" ∈ names(df)
+    @rsubset! df :Poll ∈ ["CO2", "COX"]
+  end
   if "Year" ∈ names(df)
-    @rsubset! df :Year ∈ [2020]
-  end
-  if "Month" ∈ names(df)
-    @rsubset! df :Month ∈ ["Winter"]
-  end
-  if "Day" ∈ names(df)
-    @rsubset! df :Day ∈ ["Peak"]
+    @rsubset! df :Year ∈ [2020, 2021]
   end
   if "Diff" ∈ names(df)
     @rsubset! df abs(:Diff) > 1e-7
@@ -57,37 +57,28 @@ function f_al(df_in)
   return (df)
 end
 
-function filter_85(df_in)
+function f_fp(df_in)
   df = copy(df_in)
   if "Area" ∈ names(df)
     @rsubset! df :Area ∈ ["ON"]
   end
   if "FuelEP" ∈ names(df)
-    @rsubset! df :FuelEP == "Biomass"
+    @rsubset! df :FuelEP == "JetFuel"
   end
   if "Fuel" ∈ names(df)
-    @rsubset! df :Fuel == "Biomass"
+    @rsubset! df :Fuel == "JetFuel"
   end
   if "ECC" ∈ names(df)
-    @rsubset! df :EC == "UtilityGen"
-  end
-  if "Poll" ∈ names(df)
-    @rsubset! df :Poll == "NOX"
-  end
-  if "Year" ∈ names(df)
-    @rsubset! df :Year == 1996
+    @rsubset! df :ECC == "ForeignPassenger"
   end
   if "EC" ∈ names(df)
-    @rsubset! df :EC == "Offices"
+    @rsubset! df :EC == "ForeignPassenger"
   end
-  if "ECC" ∈ names(df)
-    @rsubset! df :ECC == "Offices"
-  end
-  if "Tech" ∈ names(df)
-    @rsubset! df :Tech == "LPG"
+  if "Poll" ∈ names(df)
+    @rsubset! df :Poll == "CO2"
   end
   if "Year" ∈ names(df)
-    @rsubset! df :Year ∈ [1985]
+    @rsubset! df :Year > 2007 :Year < 2030 # ∈ [2007,2008]
   end
   if "Diff" ∈ names(df)
     @rsubset! df abs(:Diff) >= 1e-7
@@ -555,6 +546,288 @@ end
 
 function archive_search(Needle::String)
   archive_search(2024, Needle)
+end
+
+"""
+  ReadDisk(::Type{DataFrame}, db::String, name::String; 
+            skip_zeros = false,
+            dimension_filters::Dict = Dict())
+
+Reads the dataset named `name` from the HDF5 file specified by `db` and returns a DataFrame.
+Applies filters directly during data loading to minimize memory usage.
+
+# Arguments
+- `::Type{DataFrame}`: The type parameter specifying a DataFrame return
+- `db::String`: Path to the HDF5 file
+- `name::String`: Name of the dataset to read
+- `skip_zeros::Bool=false`: Whether to skip rows with zero values in the final result
+- `dimension_filters::Dict=Dict()`: A dictionary mapping dimension names to filter criteria
+
+The `dimension_filters` parameter specifies which slices to read for each dimension:
+- A single value: read only that specific index/value
+- An array of values: read only those specific indices/values
+- A range: read only the indices/values within that range
+- A function: read indices/values for which the function returns true
+
+# Returns
+- `DataFrame`: The dataset converted to a DataFrame with only the filtered data
+
+# Example
+```julia
+# Read only data for a specific year
+df = ReadDisk(DataFrame, "data.h5", "my_dataset", 
+            dimension_filters = Dict("Year" => 2020))
+
+# Read only data for multiple specific years
+df = ReadDisk(DataFrame, "data.h5", "my_dataset",
+            dimension_filters = Dict("Year" => [2020, 2025, 2030]))
+
+# Read only data for a range of years
+df = ReadDisk(DataFrame, "data.h5", "my_dataset",
+            dimension_filters = Dict("Year" => 2020:2030))
+
+# Read only data for certain regions
+df = ReadDisk(DataFrame, "data.h5", "my_dataset",
+            dimension_filters = Dict("Region" => ["North America", "Europe"]))
+
+# Combine multiple dimension filters
+df = ReadDisk(DataFrame, "data.h5", "my_dataset",
+            dimension_filters = Dict(
+                "Year" => 2020:2030,
+                "Region" => ["North America", "Europe"]
+            ))
+"""
+function ReadDisk(::Type{DataFrame}, db::String, name::String;
+  skip_zeros = false,
+  dimension_filters::Dict = Dict())
+  h5open(db, "r") do f
+    if !haskey(f, name)
+      throw(HDF5DataSetNotFoundException(db, name))
+    end
+    dataset = f[name]
+    attr = Dict(attrs(dataset))
+    
+    if get(attr, "type", "") != "variable"
+      error("`ReadDisk(DataFrame, db, \"$name\")` not supported for sets")
+    end
+    
+    # Get the dimensions
+    if !haskey(attr, "dims")
+      error("Dataset $name does not have dimension attributes")
+    end
+    
+    dims = attr["dims"]
+    
+    # First, load the dimension data to map indices to values
+    dim_values = Dict{String, Vector}()
+    dim_indices = Dict{String, Vector{Int}}()
+    
+    for (i, dim) in enumerate(dims)
+      if dim == "Unit"
+        dim_path = "EGInput/UnCode"
+      else
+        dim_path = "$(dirname(name))/$dim"
+      end
+      if haskey(f, dim_path)
+        values = read(f[dim_path])
+        # If first value is empty, use indices
+        if length(values) > 0 && first(values) == ""
+          values = collect(1:length(values))
+        end
+      else
+        # If dimension data not available, use indices
+        values = collect(1:size(dataset, i))
+      end
+      
+      dim_values[dim] = values
+      
+      # Apply filter for this dimension if provided
+      selected_indices = collect(1:length(values))
+      
+      if haskey(dimension_filters, dim)
+        filter_criterion = dimension_filters[dim]
+        
+        if filter_criterion isa Function
+          # Apply function to values
+          selected_indices = findall(i -> filter_criterion(values[i]), selected_indices)
+        elseif filter_criterion isa AbstractRange
+          # Find indices where values are in the range
+          if eltype(values) <: Number && eltype(filter_criterion) <: Number
+            selected_indices = findall(i -> values[i] in filter_criterion, selected_indices)
+          else
+            # For string values, need to match exactly
+            selected_indices = findall(i -> string(values[i]) in string.(filter_criterion), selected_indices)
+          end
+        elseif filter_criterion isa AbstractArray
+          # Find indices where values match any in the array
+          selected_indices = findall(i -> values[i] in filter_criterion, selected_indices)
+        else
+          # Single value - find exact matches
+          selected_indices = findall(i -> values[i] == filter_criterion, selected_indices)
+        end
+      end
+      
+      dim_indices[dim] = selected_indices
+    end
+    
+    # Create the selection for HDF5 hyperslab
+    selection = Vector{Any}(undef, length(dims))
+    for (i, dim) in enumerate(dims)
+      selection[i] = dim_indices[dim]
+    end
+    
+    # Read only the selected data
+    filtered_array = dataset[selection...]
+    
+    # Create DataFrame from the filtered data
+    
+    # Prepare the dimension combinations for the filtered data
+    filtered_dim_values = Dict()
+    for (dim, indices) in dim_indices
+      filtered_dim_values[Symbol(dim)] = dim_values[dim][indices]
+    end
+    
+    # Calculate the size of the filtered result
+    filtered_sizes = [length(indices) for indices in values(dim_indices)]
+    
+    # Check if the sizes match
+    if prod(filtered_sizes) != length(filtered_array)
+      error("Size mismatch: Expected $(prod(filtered_sizes)) elements but got $(length(filtered_array))")
+    end
+    
+    # Create a DataFrame with the cartesian product of filtered dimensions
+    df_dims = [dim => values for (dim, values) in filtered_dim_values]
+    df = allcombinations(DataFrame, df_dims...)
+    
+    # Add the data values
+    df[!, :Value] = reshape(filtered_array, :)
+    
+    # Convert Year column to Int if it exists
+    if "Year" in names(df)
+      df.Year = parse.(Int, string.(df.Year))
+    end
+    
+    # Add metadata
+    metadata!(df, "variable", basename(name); style = :note)
+    metadata!(df, "group", dirname(name); style = :note)
+    metadata!(df, "name", name; style = :note)
+    metadata!(df, "units", get(attr, "units", ""); style = :note)
+    
+    # Apply zero value filtering if requested
+    if skip_zeros
+      subset!(df, :Value => ByRow(x -> !isapprox(x, 0.0)))
+    end
+    
+    return df
+  end
+end
+
+"""
+    ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
+
+Reads the dataset named `name` from the HDF5 file specified by `db` and returns
+the raw array with filters applied at read time.
+
+# Arguments
+- `db::String`: Path to the HDF5 file
+- `name::String`: Name of the dataset to read
+- `dimension_filters::Dict=Dict()`: A dictionary mapping dimension names to filter criteria
+
+# Returns
+- `Tuple{Array, Dict}`: A tuple containing the filtered array and a dictionary 
+  mapping dimension names to their filtered values
+
+# Example
+```julia
+# Read only data for specific years
+data, dim_info = ReadDiskRaw("data.h5", "my_dataset", 
+                             dimension_filters = Dict("Year" => [2020, 2030]))
+```
+"""
+function ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
+  h5open(db, "r") do f
+  if !haskey(f, name)
+  throw(HDF5DataSetNotFoundException(db, name))
+  end
+    dataset = f[name]
+    attr = Dict(attrs(dataset))
+    
+    # Get the dimensions
+    if !haskey(attr, "dims")
+        error("Dataset $name does not have dimension attributes")
+    end
+    
+    dims = attr["dims"]
+    
+    # Process dimension data and filters (same as in the DataFrame version)
+    dim_values = Dict{String, Vector}()
+    dim_indices = Dict{String, Vector{Int}}()
+    
+    for (i, dim) in enumerate(dims)
+        # [Same dimension processing code as in the DataFrame version]
+        dim_path = "$(dirname(name))/$dim"
+        if haskey(f, dim_path)
+            values = read(f[dim_path])
+            # If first value is empty, use indices
+            if length(values) > 0 && first(values) == ""
+                values = collect(1:length(values))
+            end
+        else
+            # If dimension data not available, use indices
+            values = collect(1:size(dataset, i))
+        end
+        
+        dim_values[dim] = values
+        
+        # Apply filter for this dimension if provided
+        selected_indices = collect(1:length(values))
+        
+        if haskey(dimension_filters, dim)
+            filter_criterion = dimension_filters[dim]
+            
+            if filter_criterion isa Function
+                # Apply function to values
+                selected_indices = findall(i -> filter_criterion(values[i]), selected_indices)
+            elseif filter_criterion isa AbstractRange
+                # Find indices where values are in the range
+                if eltype(values) <: Number && eltype(filter_criterion) <: Number
+                    selected_indices = findall(i -> values[i] in filter_criterion, selected_indices)
+                else
+                    # For string values, need to match exactly
+                    selected_indices = findall(i -> string(values[i]) in string.(filter_criterion), selected_indices)
+                end
+            elseif filter_criterion isa AbstractArray
+                # Find indices where values match any in the array
+                selected_indices = findall(i -> values[i] in filter_criterion, selected_indices)
+            else
+                # Single value - find exact matches
+                selected_indices = findall(i -> values[i] == filter_criterion, selected_indices)
+            end
+        end
+        
+        dim_indices[dim] = selected_indices
+    end
+    
+    # Create the selection for HDF5 hyperslab
+    selection = Vector{Any}(undef, length(dims))
+    for (i, dim) in enumerate(dims)
+        selection[i] = dim_indices[dim]
+    end
+    
+    # Read only the selected data
+    filtered_array = dataset[selection...]
+    
+    # Create a dictionary with the filtered dimension values
+    filtered_dim_values = Dict()
+    for (dim, indices) in dim_indices
+        filtered_dim_values[dim] = dim_values[dim][indices]
+    end
+    
+    # Check if the array has indefinite values
+    throw_error_if_arr_contains_indefinite_values(filtered_array, name)
+    
+    return (filtered_array, filtered_dim_values)
+end
 end
 
 end # module JuliaCompare

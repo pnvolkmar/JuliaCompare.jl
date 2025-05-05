@@ -3,7 +3,7 @@ import JuliaCompare as J
 import PromulaDBA as P
 import SmallModel as M 
 import JuliaCompare: db_files, Canada
-using CSV, DataFrames, DataFramesMeta
+using CSV, DataFrames, DataFramesMeta, TidierData
 
 BASE_FOLDER = raw"\\Silver\c\2020CanadaSpruce"
 BASE_FOLDER2 = raw"\\Silver\c\2020CanadaTanoak"
@@ -26,10 +26,69 @@ loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
 
 EuFPol = J.diff("EuFPol", loc1, loc2)
 @rsubset! EuFPol :Area ∈ Canada
+EuFPol = @mutate(EuFPol, PDiff = case_when(Diff == 0 => 0,
+Spruce != 0 => Diff/Spruce,
+Spruce == 0 => Diff/Tanoak))
+
+issues = @rsubset EuFPol abs(:PDiff) > .2 :Diff > .1
+sort(@by(issues, :ECC, :Count = length(:Diff)), :Count, rev= true)
+
+
+ifelse.(EUFPol)
 J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
 # J.plot_diff(@rsubset EuFPol :FuelEP == "Biomass"; dim="ECC", num=10, title="Biomass diffs by ECC")
 
 
+# This is an issue with Spruce and I'll ignore it. 
+@rsubset! EuFPol :ECC == "ResidentialOffRoad"
+# Gasoline and Ethanol
+J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
+# CO2 and COX, mainly
+J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
+# QC and ON are the biggest contributors, though many are present
+J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
+@by(EuFPol, [:Year], :Diff = sum(abs.(:Diff)))
+
+
+# This is an issue with Spruce and I'll ignore it. 
+@rsubset! EuFPol :ECC == "ForeignPassenger"
+# Jet fuel
+J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
+# All CO2 
+J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
+# SK, ON, AB are the biggest contributors, though many are present
+J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
+@by(EuFPol, [:Year], :Diff = sum(abs.(:Diff)))
+
+# OffRoad 
+Polute_p = J.var("TCalDB/Polute", loc1)
+Polute_p = J.f_on(Polute_p)
+
+Polute_j = J.var("TCalDB/Polute", loc2)
+Polute_j = J.f_on(Polute_j)
+
+Polute = J.diff(Polute_p, Polute_j; name1 = "Spruce", name2 = "Tanoak")
+@rsubset Polute :Diff != 0
+
+# 2×10 DataFrame
+#  Row │ Enduse    FuelEP   Tech     EC                  Poll    Area    Year   Spruce    Tanoak    Diff           
+#      │ String    String   String   String              String  String  Int64  Float64?  Float64?  Float64
+# ─────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────
+#    1 │ Carriage  Ethanol  OffRoad  ResidentialOffRoad  COX     ON       2020   12222.9   12222.9     0.000191788
+#    2 │ Carriage  Ethanol  OffRoad  ResidentialOffRoad  COX     ON       2021   13027.8   13185.5  -157.682
+
+DmdFEPTech = J.diff("TOutput/DmdFEPTech", loc1, loc2)
+DmdFEPTech = J.f_on(DmdFEPTech)
+import SmallModel: ReadDisk
+
+POCA = P.data(joinpath(DATA_FOLDER1,"TOutput2.dba"),"POCA");
+POCA_j = M.ReadDisk(loc2.HDF5_path, "TOutput/POCA");
+
+POCA = J.diff("TOutput/POCA", loc1, loc2)
+POCA = J.f_on(POCA)
+# UtilityGen
+
+# This is an issue with xUnGCCR that I have to get to the bottom of. 
 @rsubset! EuFPol :ECC == "UtilityGen"
 # Almost all Natural Gas in the future and Coal in the past
 J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
@@ -51,7 +110,7 @@ J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area")
 
 UnPolGross_p = P.data(joinpath(DATA_FOLDER1,"EGOutput3.dba"),"UnPolGross")
 db = loc2.HDF5_path
-UnPolGross = M.ReadDisk(db, "EGOutput/UnPolGross")
+UnPolGross = ReadDisk(db, "EGOutput/UnPolGross")
 UnArea = M.ReadDisk(db,"EGInput/UnArea")
 UnCode = M.ReadDisk(db,"EGInput/UnCode")
 UnCode_p = P.data(joinpath(DATA_FOLDER1,"EGInput.dba"), "UnCode")
@@ -105,20 +164,22 @@ AddOnline = DataFrame(Unit = UnCode_p, UnOnline = UnOnline)
 UnEGA = DataFrames.leftjoin(UnEGA, AddOnline, on = :Unit)
 
 issues = @rsubset UnEGA :UnArea == "SK" :Year == 2039 abs(:Diff) > 1e-5
+sort(issues, :Diff)
 issue_codes = unique(issues.Unit)
 
 UnGC = J.diff("UnGC", loc1, loc2)
-@rsubset UnGC :Year == 2039 :Unit ∈ issue_codes
-@rsubset UnGC :Unit == "SK_New_SolarPV" abs(:Diff) > 0 
+@rsubset UnGC :Year == 2040 :Unit ∈ issue_codes abs(:Diff) != 0;
+sort(UnGC, :Diff)
 
 UnGCCR = J.diff("UnGCCR", loc1, loc2)
-@rsubset UnGCCR :Unit == "SK_New_SolarPV" abs(:Diff) > 0.01
+@rsubset! UnGCCR :Year == 2039 :Unit ∈ issue_codes abs(:Diff) != 0;
+sort(UnGCCR, :Diff)
 
 UnGCCE = J.diff("UnGCCE", loc1, loc2)
 @rsubset UnGCCE :Unit == "SK_New_SolarPV" abs(:Diff) > 0.01
 
 xUnGCCR = J.diff("xUnGCCR", loc1, loc2)
-@rsubset xUnGCCR :Unit == "SK_New_SolarPV"  abs(:Diff) > 0.01
+@rsubset! UnGCCR :Unit ∈ issue_codes abs(:Diff) != 0;
 
 xUnGCCI = J.diff("xUnGCCI", loc1, loc2)
 @rsubset xUnGCCI :Unit == "SK_New_SolarPV" :Year > 2020 :Year <2040
