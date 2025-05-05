@@ -186,4 +186,34 @@ df = @rsubset! xUnGCCR :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) !=
 sort(df, [:Year, :Diff])
 
 xUnGCCI = J.diff("xUnGCCI", loc1, loc2)
-@rsubset xUnGCCI :Unit == "SK_New_SolarPV" :Year > 2020 :Year <2040
+df = @rsubset! xUnGCCI :Unit ∈ issue_codes abs(:Diff) != 0;
+sort(df, [:Year, :Diff])
+
+UnGCCI = J.diff("UnGCCI", loc1, loc2)
+df = @rsubset! UnGCCI :Unit ∈ issue_codes abs(:Diff) > 0.1;
+sort(df, [:Year, :Diff])
+
+# HDGCCI = J.diff("HDGCCI", loc1, loc2) # didn't work
+HDGCCI_p = J.var("HDGCCI", loc1)
+@rsubset HDGCCI_p :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] :HDGCCI != 0
+HDGCCI_j = J.ReadDisk(DataFrame, loc2.HDF5_path, "EGOutput/HDGCCI"; Dict)
+@rsubset HDGCCI_j :Node == "SK" :GenCo == "SK" :Area == "SK" :Year == 2023
+
+
+dimension_filters= Dict(:Node => "SK", :GenCo => "SK", :Area => "SK", :Year => ["2023","2024"])
+HDGCCI_j = M.ReadDisk(loc2.HDF5_path, "EGOutput/HDGCCI");
+sets = M.ReadSets(loc2.HDF5_path, "EGOutput/HDGCCI")
+arr, indes = J.subset_array(HDGCCI_j, sets, dimension_filters)
+df = J.to_tidy_dataframe(arr, indes)
+node = M.Select(sets.Node, "SK")
+area = M.Select(sets.Area, "SK")
+genco = M.Select(sets.GenCo, "SK")
+year = M.Select(sets.Year, ["2023","2024"])
+df = hcat(sets.Plant, HDGCCI_j[:,node, genco, area, year]);
+@rsubset df[df[:,2] .!=0, !]
+urange = [1:length(s) for s in sets]
+HDGCCI_j[urange...]
+for (key, value) in pairs(sets)
+    println("Key: $key, Value: $value")
+end
+∈

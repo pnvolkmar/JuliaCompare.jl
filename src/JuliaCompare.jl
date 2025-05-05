@@ -549,165 +549,153 @@ function archive_search(Needle::String)
 end
 
 """
-    ReadDisk(::Type{DataFrame}, db::String, name::String; 
-             skip_zeros = false,
-             dimension_filters::Dict = Dict())
+  subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters::Dict{Symbol, <:Any})
 
-Reads the dataset named `name` from the HDF5 file specified by `db` and returns a DataFrame.
-Applies dimension-based filters to minimize memory usage.
+Filters a multi-dimensional array based on dimension names and values.
 
 # Arguments
-- `::Type{DataFrame}`: The type parameter specifying a DataFrame return
-- `db::String`: Path to the HDF5 file
-- `name::String`: Name of the dataset to read
-- `skip_zeros::Bool=false`: Whether to skip rows with zero values in the final result
-- `dimension_filters::Dict=Dict()`: A dictionary mapping dimension names to filter criteria
+- `array::AbstractArray`: The array to filter
+- `sets::NamedTuple`: Named tuple containing the dimension values for each axis
+- `dimension_filters::Dict{Symbol, <:Any}`: Dictionary mapping dimension names to filter values
 
 # Returns
-- `DataFrame`: The dataset converted to a DataFrame with only the filtered data
-"""
-function ReadDisk(::Type{DataFrame}, db::String, name::String; 
-                  skip_zeros = false,
-                  dimension_filters::Dict = Dict())
-    h5open(db, "r") do f
-        if !haskey(f, name)
-            throw(HDF5DataSetNotFoundException(db, name))
-        end
-        
-        dataset = f[name]
-        attr = Dict(attrs(dataset))
-        
-        if get(attr, "type", "") != "variable"
-            error("`ReadDisk(DataFrame, db, \"$name\")` not supported for sets")
-        end
-        
-        # Get the dimensions
-        dims = get(attr, "dims", [])
-        if isempty(dims)
-            error("Dataset $name does not have dimension attributes")
-        end
-        
-        # For each dimension, get its values and apply filters
-        filtered_dim_values = Dict{Symbol, Vector}()
-        
-        for (i, dim) in enumerate(dims)
-            dim_path = "$(dirname(name))/$dim"
-            
-            # Get dimension values
-            if haskey(f, dim_path)
-                values = read(f[dim_path])
-                if length(values) > 0 && first(values) == ""
-                    values = collect(1:length(values))
-                end
-            else
-                values = collect(1:size(dataset, i))
-            end
-            
-            # Filter values if needed
-            if haskey(dimension_filters, dim)
-                filter_criterion = dimension_filters[dim]
-                
-                filtered_indices = Int[]
-                
-                if filter_criterion isa Function
-                    # Apply function to values
-                    for (idx, val) in enumerate(values)
-                        if filter_criterion(val)
-                            push!(filtered_indices, idx)
-                        end
-                    end
-                elseif filter_criterion isa AbstractRange
-                    # Check if values are in range
-                    for (idx, val) in enumerate(values)
-                        if val in filter_criterion
-                            push!(filtered_indices, idx)
-                        end
-                    end
-                elseif filter_criterion isa AbstractArray
-                    # Check if values match any in array
-                    for (idx, val) in enumerate(values)
-                        if val in filter_criterion
-                            push!(filtered_indices, idx)
-                        end
-                    end
-                else
-                    # Single value match
-                    for (idx, val) in enumerate(values)
-                        if val == filter_criterion
-                            push!(filtered_indices, idx)
-                        end
-                    end
-                end
-                
-                # Store filtered values
-                filtered_dim_values[Symbol(dim)] = values[filtered_indices]
-            else
-                # No filter, use all values
-                filtered_dim_values[Symbol(dim)] = values
-            end
-        end
-        
-        # Create DataFrame with all combinations of filtered dimensions
-        df = allcombinations(DataFrame, [(dim => vals) for (dim, vals) in filtered_dim_values]...)
-        
-        # Now read the values for each row in the DataFrame
-        n_rows = nrow(df)
-        values = Vector{eltype(dataset)}(undef, n_rows)
-        
-        for i in 1:n_rows
-            # Create the selection indices for this row
-            selection = Any[]
-            
-            for dim in dims
-                dim_sym = Symbol(dim)
-                # Find the index of this dimension's value in the original dataset
-                dim_val = df[i, dim_sym]
-                
-                dim_path = "$(dirname(name))/$dim"
-                if haskey(f, dim_path)
-                    orig_values = read(f[dim_path])
-                    if length(orig_values) > 0 && first(orig_values) == ""
-                        # Using indices
-                        idx = dim_val
-                    else
-                        # Using values
-                        idx = findfirst(==(dim_val), orig_values)
-                    end
-                else
-                    # Using indices
-                    idx = dim_val
-                end
-                
-                push!(selection, idx)
-            end
-            
-            # Read the value for this combination
-            values[i] = dataset[selection...]
-        end
-        
-        # Add values to DataFrame
-        df[!, :Value] = values
-        
-        # Convert Year column to Int if it exists
-        if "Year" in names(df)
-            df.Year = parse.(Int, string.(df.Year))
-        end
-        
-        # Add metadata
-        metadata!(df, "variable", basename(name); style = :note)
-        metadata!(df, "group", dirname(name); style = :note)
-        metadata!(df, "name", name; style = :note)
-        metadata!(df, "units", get(attr, "units", ""); style = :note)
-        
-        # Apply zero value filtering if requested
-        if skip_zeros
-            subset!(df, :Value => ByRow(x -> !isapprox(x, 0.0)))
-        end
-        
-        return df
-    end
-end
+- `Array`: A new array with only the filtered values
 
+# Example
+```julia
+dimension_filters = Dict(:Node => "SK", :GenCo => "SK", :Area => "SK")
+filtered_array = subset_array(original_array, sets, dimension_filters)
+```
+"""
+
+function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters::Dict{Symbol, <:Any})
+  # Get the dimensions of the array
+  dims = ndims(array)
+  # Get the named dimensions
+  dim_names = collect(propertynames(sets))
+  
+  # Check that dimensions match
+  if dims != length(dim_names)
+    error("Number of dimensions in array ($(dims)) doesn't match number of sets ($(length(dim_names)))")
+  end
+  
+  # Create selections for each dimension
+  indices_by_dim = []
+  filtered_sets_dict = Dict{Symbol, Vector}()
+  
+  for dim_name in dim_names
+    dim_values = getproperty(sets, dim_name)
+    
+    if haskey(dimension_filters, dim_name)
+      filter_value = dimension_filters[dim_name]
+      
+      # Find the indices that match the filter
+      if filter_value isa Function
+        # Function filter
+        indices = findall(filter_value, dim_values)
+      elseif filter_value isa AbstractArray
+        # Array of values
+        indices = findall(x -> x in filter_value, dim_values)
+      else
+        # Single value (exact match)
+        indices = findall(x -> x == filter_value, dim_values)
+      end
+      
+      if isempty(indices)
+        error("No values found for filter $(dim_name) => $(filter_value)")
+      end
+      
+      push!(indices_by_dim, indices)
+      filtered_sets_dict[dim_name] = dim_values[indices]
+    else
+      # No filter for this dimension, select all
+      push!(indices_by_dim, collect(1:length(dim_values)))
+      filtered_sets_dict[dim_name] = dim_values
+    end
+  end
+  
+  # Create indexing expressions for each dimension
+  indexing = Tuple(indices_by_dim)
+  
+  # Extract the subarray using the indices
+  result = array[indexing...]
+  
+  # Convert the filtered sets dictionary to a NamedTuple
+  filtered_sets = NamedTuple{Tuple(keys(filtered_sets_dict))}(Tuple(values(filtered_sets_dict)))
+
+  return result, filtered_sets
+end
+  
+"""
+    to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
+
+Converts a multi-dimensional array and its dimension sets into a tidy DataFrame format.
+
+# Arguments
+- `array::AbstractArray`: The array to convert
+- `sets::NamedTuple`: Named tuple containing the dimension values for each axis
+
+# Returns
+- `DataFrame`: A tidy DataFrame with one row per cell in the array
+
+# Example
+```julia
+filtered_array, filtered_sets = subset_array(HDGCCI_j, sets, dimension_filters)
+df = to_tidy_dataframe(filtered_array, filtered_sets)
+```
+"""
+
+function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
+  # Get the dimension names
+  dim_names = collect(propertynames(sets))
+  
+  # Check that dimensions match
+  if ndims(array) != length(dim_names)
+    error("Number of dimensions in array ($(ndims(array))) doesn't match number of sets ($(length(dim_names)))")
+  end
+  
+  # Create arrays for each dimension value
+  values_by_dim = []
+  for dim_name in dim_names
+    push!(values_by_dim, getproperty(sets, dim_name))
+  end
+  
+  # Create the result DataFrame
+  df = DataFrame()
+  
+  # Use Base.product to iterate through all combinations of indices
+  indices_iter = Iterators.product([1:length(vals) for vals in values_by_dim]...)
+  
+  # Initialize arrays to hold the data
+  n_elements = length(array)
+  dim_columns = [Vector{eltype(values_by_dim[i])}(undef, n_elements) for i in 1:length(dim_names)]
+  value_column = Vector{eltype(array)}(undef, n_elements)
+  
+  # Fill in the data
+  for (i, idx) in enumerate(indices_iter)
+    # Get the actual value
+    value_column[i] = array[idx...]
+    
+    # Get the dimension values
+    for (d, dim_idx) in enumerate(idx)
+      dim_columns[d][i] = values_by_dim[d][dim_idx]
+    end
+  end
+  
+  # Add the columns to the DataFrame
+  for (i, name) in enumerate(dim_names)
+    df[!, Symbol(name)] = dim_columns[i]
+  end
+  
+  # Add the value column
+  df[!, :Value] = value_column
+  
+  return df
+end
+  
+  
+      
+      
 """
     ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
 
