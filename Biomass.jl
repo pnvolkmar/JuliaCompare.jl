@@ -113,6 +113,8 @@ db = loc2.HDF5_path
 UnPolGross = ReadDisk(db, "EGOutput/UnPolGross")
 UnArea = M.ReadDisk(db,"EGInput/UnArea")
 UnCode = M.ReadDisk(db,"EGInput/UnCode")
+M.WriteDisk(loc2.HDF5_path, "EGInput/Unit", UnCode)
+M.WriteDisk(loc2.HDF5_path, "EGOutput/Unit", UnCode)
 UnCode_p = P.data(joinpath(DATA_FOLDER1,"EGInput.dba"), "UnCode")
 ECC = M.ReadDisk(db,"SInput/ECC")
 # We have an issue with UnCode
@@ -168,12 +170,12 @@ sort(issues, :Diff)
 issue_codes = unique(issues.Unit)
 
 UnGC = J.diff("UnGC", loc1, loc2)
-@rsubset UnGC :Year == 2040 :Unit ∈ issue_codes abs(:Diff) != 0;
-sort(UnGC, :Diff)
+df = @rsubset UnGC :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) != 0;
+sort(df, [:Year, :Diff])
 
 UnGCCR = J.diff("UnGCCR", loc1, loc2)
-@rsubset! UnGCCR :Year == 2039 :Unit ∈ issue_codes abs(:Diff) != 0;
-sort(UnGCCR, :Diff)
+df = @rsubset! UnGCCR :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) != 0;
+sort(df, :Diff)
 
 UnGCCE = J.diff("UnGCCE", loc1, loc2)
 @rsubset UnGCCE :Unit == "SK_New_SolarPV" abs(:Diff) > 0.01
