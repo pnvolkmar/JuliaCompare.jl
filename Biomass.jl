@@ -178,10 +178,12 @@ df = @rsubset! UnGCCR :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) != 
 sort(df, :Diff)
 
 UnGCCE = J.diff("UnGCCE", loc1, loc2)
-@rsubset UnGCCE :Unit == "SK_New_SolarPV" abs(:Diff) > 0.01
+df = @rsubset! UnGCCE :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) != 0;
+sort(df, [:Year, :Diff])
 
 xUnGCCR = J.diff("xUnGCCR", loc1, loc2)
-@rsubset! UnGCCR :Unit ∈ issue_codes abs(:Diff) != 0;
+df = @rsubset! xUnGCCR :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) != 0;
+sort(df, [:Year, :Diff])
 
 xUnGCCI = J.diff("xUnGCCI", loc1, loc2)
 @rsubset xUnGCCI :Unit == "SK_New_SolarPV" :Year > 2020 :Year <2040
