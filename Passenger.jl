@@ -23,8 +23,8 @@ vars = J.list_vars(CODE_FOLDER, DATA_FOLDER1, db_files);
 vars_j = J.list_vars(HDF5_path)
 loc1 = J.Loc_p(vars, DATA_FOLDER1, "Spruce");
 loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
-
-EuFPol = J.diff("EuFPol", loc1, loc2)
+dimension_filters = Dict{Symbol,Any}()
+EuFPol = J.diff_fast("EuFPol", loc1, loc2; dimension_filters)
 @rsubset! EuFPol :Area ∈ Canada
 J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
 # J.plot_diff(@rsubset EuFPol :FuelEP == "Biomass"; dim="ECC", num=10, title="Biomass diffs by ECC")
@@ -33,64 +33,43 @@ J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
 @rsubset! EuFPol :ECC == "Passenger"
 # Almost all Gasoline and Diesel
 J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
-# CO2 mainly wiht a little COX
+push!(dimension_filters, :FuelEP => ["Gasoline","Diesel"])
+
+# CO2 mainly with a little COX
 J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
+push!(dimension_filters, :Poll => ["CO2","COX"])
 # ON, AB, BC are the biggest contributors, though many are present
-J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
+J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area")
+push!(dimension_filters, :Area => "ON")
 
-TotPol_j = J.var("TotPol", loc2)
+# ON, AB, BC are the biggest contributors, though many are present
+J.plot_diff(EuFPol; dim="Tech", num=10, title="EuFPol diffs by Tech")
+push!(dimension_filters, :Area => "ON")
 
-TotPol = J.diff("TotPol", loc1, loc2)
-@rsubset! TotPol :Area ∈ Canada
-J.plot_diff(TotPol; dim="ECC", num=10, title="TotPol diffs by ECC")
+Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters)
+sec = 'T'
+Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters, sec)
+J.plot_diff(Polute; dim="Tech", num=10, title="Polute diffs by Tech")
+push!(dimension_filters, :Tech => ["LDVDiesel","LDVGasoline"])
+push!(dimension_filters, :Year => 2020:2050)
 
-@rsubset! TotPol :ECC == "UtilityGen"
-J.plot_diff(TotPol; dim="FuelEP", num=10, title="Biomass diffs by FuelEP") # Almost all Natural Gas
-J.plot_diff(TotPol; dim="Poll", num=10, title="TotPol diffs by Poll") # All CO2
-J.plot_diff(TotPol; dim="Area", num=10, title="TotPol diffs by Area") # Mostly CA a little in Mtn
+POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, sec)
+i = findall(vars.Variable .== "POCA" .&& first.(vars.Database) .== 'T')
+i = i[1]
+vars[i,:Database] = "TOutput2"
+dimension_filters[:Year] = "2040"
+POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, sec)
+@rsubset POCA :Diff != 0
 
-# UtilityGen appears to have a lot of historic issues. Let's tackle that first.
+POCX = J.diff_fast("POCX", loc1, loc2; dimension_filters, sec)
+@rsubset POCX :Diff != 0
 
-UnPolGross_p = P.data(joinpath(DATA_FOLDER1,"EGOutput3.dba"),"UnPolGross")
-db = loc2.HDF5_path
-UnPolGross = M.ReadDisk(db, "EGOutput/UnPolGross")
-UnArea = M.ReadDisk(db,"EGInput/UnArea")
-UnCode = M.ReadDisk(db,"EGInput/UnCode")
-UnCode_p = P.data(joinpath(DATA_FOLDER1,"EGInput.dba"), "UnCode")
-ECC = M.ReadDisk(db,"SInput/ECC")
-# We have an issue with UnCode
-Codes = DataFrame(Spruce = UnCode_p, Tanoak = UnCode, Agree = UnCode .== UnCode_p)
-@rsubset! Codes :Spruce != "" && :Tanoak != "Null"
-@rsubset Codes :Agree == false
-Codes = J.reconcile_codes(Codes)
-@rsubset Codes :MatchAfterTransform == false
+DmdFEPTech = J.diff_fast("DmdFEPTech", loc1, loc2; dimension_filters, sec)
+@rsubset DmdFEPTech isapprox(:Diff, 0)
 
-@rsubset Codes :Spruce == "NL_Cg_ECC34_OGSteam"
-
-UnPlant_j = M.ReadDisk(db,"EGInput/UnPlant")
-UnPlant_p = P.data(joinpath(DATA_FOLDER1,"EGInput.dba"), "UnPlant")
-Plants = DataFrame(Spruce = UnPlant_p, Tanoak = UnPlant_j, Agree = UnPlant_j .== UnPlant_p)
-@rsubset! Plants :Spruce != "" && :Tanoak != "Null"
-@rsubset Plants :Agree == false
-# All pants Agree
-Codes.Plant = Plants.Spruce
-
-@rsubset Codes :MatchAfterTransform == false
-@rsubset Codes :MatchAfterTransform == false :Plant == "OGCC"
-
-FuelEP = M.ReadDisk(db,"E2020DB/FuelEP")
-Poll = M.ReadDisk(db, "E2020DB/Poll")
-import SmallModel: Select, Yr
-fuelep = Select(FuelEP, "NaturalGas")
-poll = Select(Poll, "CO2")
-year = Yr(2050)
-df = DataFrame(UnCode = UnCode, UnArea = UnArea, UnPlant = UnPlant_j,
-  Spruce = UnPolGross_p[:,fuelep,poll,year], Tanoak = UnPolGross[:,fuelep,poll,year])
-
-df.Diff = df.Spruce - df.Tanoak
-@rsubset! df :UnArea == "SK" abs(:Diff) > 1e-7
-sort(df, :UnPlant)
-
+dim_f = Dict(:Area => "ON") 
+@btime POCX = J.diff_fast("POCX", loc1, loc2; dimension_filters = dim_f, sec)
+@rsubset POCX :EC == "Passenger" :Poll == "COX" !isapprox(:Diff, 0, atol=1e-3)
 UnEGA = J.diff("UnEGA", loc1, loc2)
 UnArea
 UnCode_p

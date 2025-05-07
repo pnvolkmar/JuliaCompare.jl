@@ -5,7 +5,7 @@ using DataFrames, Chain, DataFramesMeta, HDF5
 import PromulaDBA as P
 using Makie, CairoMakie
 using Colors, CategoricalArrays
-import SmallModel: ReadDisk
+import SmallModel: ReadDisk, ReadSets
 
 include("UnCodeMapping.jl")
 
@@ -401,9 +401,77 @@ function diff(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
   df = diff(df1, df2; name1, name2)
 end
 
-function diff_fast(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
-  df1 = var(name, loc1)
-  df2 = var(name, loc2)
+function lookup_database(name, loc; sec::Char="")
+  vars = loc.vars
+  temp2 = find_var(name, vars; exact=true)
+  n = nrow(temp2)
+  if n == 1
+    return (temp2.Variable[1], temp2.Database[1])
+  elseif n > 1 && sec == ""
+    println(name, " could have several values, select one of the below\n")
+    println(temp2)
+    error("Variable not found")
+  elseif n > 1 && sec != "" 
+    i = findall(first.(temp2.Database) .== sec)
+    println("Found these options")
+    println(temp2)
+    println("I think you want this one: ", i)
+    if length(i) == 1
+      ind = i[1]
+      return (string(temp2[ind,:Variable]), temp2[ind,:Database])
+    else
+      println(name, " could have several values, select one of the below\n")
+      println(temp2)
+      error("Variable not found")
+    end
+  else
+    temp = find_var(name, vars)
+    m = nrow(temp)
+    if m == 1
+      return (temp.Variable[1], temp.Database[1])
+    elseif m == 0
+      println(name, " not found in vars, perhaps your variable is in the list below\n")
+      temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
+      println(vars[temp2,[:Variable, :Database]])
+      error("Variable not found")
+      return (vars[temp2,[:Variable, :Database]])
+    elseif unique(temp, [:Variable, :Dimensions]) == 1
+      print("Combining ", nrow(temp), "variables")
+      return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
+    else
+      println(name, "\n")
+      println(temp)
+      return (temp)
+    end
+  end
+end
+
+
+function diff_fast(name::String, loc1, loc2; 
+                   dimension_filters::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
+                   sec::Char="")
+  name1 = loc1.name
+  name2 = loc2.name
+  vname1, dbname1 = lookup_database(name, loc1; sec)
+  println("dbname1 is: ", dbname1)
+  println("vname1 is: ", vname1)
+  vname2, dbname2 = lookup_database(name, loc2; sec)
+  if typeof(loc1) == Loc_j
+    sets = ReadSets(loc1.HDF5_path, string(dbname1,"/", vname1))
+    arr1 = ReadDisk(loc1.HDF5_path, string(dbname1,"/", vname1))
+  elseif typeof(loc1) == Loc_p
+    arr1 = P.data(joinpath(loc1.DATA_FOLDER,string(dbname1,".dba")), vname1)
+  end
+  if typeof(loc2) == Loc_j
+    sets = ReadSets(loc2.HDF5_path, string(dbname2,"/", vname2))
+    arr2 = ReadDisk(loc2.HDF5_path, string(dbname2,"/", vname2))
+  else
+    arr2 = P.data(joinpath(loc2.DATA_FOLDER,string(dbname2,".dba")), vname1)
+  end
+  arr1, set1 = subset_array(arr1, sets, dimension_filters)
+  arr2, set2 = subset_array(arr2, sets, dimension_filters)
+  df1 = to_tidy_dataframe(arr1, set1)
+  df2 = to_tidy_dataframe(arr2, set2)
   df = diff(df1, df2; name1, name2)
 end
 
@@ -585,18 +653,18 @@ function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters:
     # Check that dimensions match
     if dims != length(dim_names)
         error("Number of dimensions in array ($(dims)) doesn't match number of sets ($(length(dim_names)))")
-    end
-    
+        end
+        
     # Create selections for each dimension
     indices_by_dim = []
     filtered_sets_dict = Dict{Symbol, Vector}()
-    
+        
     for dim_name in dim_names
         dim_values = getproperty(sets, dim_name)
         
         if haskey(dimension_filters, dim_name)
             filter_value = dimension_filters[dim_name]
-            
+                
             # Find the indices that match the filter
             if filter_value isa Function
                 # Function filter
@@ -607,7 +675,7 @@ function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters:
             else
                 # Single value (exact match)
                 indices = findall(x -> x == filter_value, dim_values)
-            end
+                        end
             
             if isempty(indices)
                 error("No values found for filter $(dim_name) => $(filter_value)")
@@ -615,14 +683,14 @@ function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters:
             
             push!(indices_by_dim, indices)
             filtered_sets_dict[dim_name] = dim_values[indices]
-        else
+                else
             # No filter for this dimension, select all
             indices = collect(1:length(dim_values))
             push!(indices_by_dim, indices)
             filtered_sets_dict[dim_name] = dim_values
-        end
-    end
-    
+                    end
+                end
+                
     # Create indexing expressions for each dimension
     indexing = Tuple(indices_by_dim)
     
@@ -666,7 +734,7 @@ function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
   values_by_dim = []
   for dim_name in dim_names
     push!(values_by_dim, getproperty(sets, dim_name))
-  end
+                    end
   
   # Create the result DataFrame
   df = DataFrame()
@@ -708,7 +776,7 @@ end
   
   
       
-      
+
 """
     ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
 
@@ -814,7 +882,7 @@ function ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
     throw_error_if_arr_contains_indefinite_values(filtered_array, name)
     
     return (filtered_array, filtered_dim_values)
-end
+  end
 end
 
 end # module JuliaCompare
