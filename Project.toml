@@ -21,6 +21,7 @@ ProfileView = "c46f51b8-102a-5cf2-8d2c-8597cb0e0da7"
 PromulaDBA = "60a444bf-242d-4d42-8b8e-182a32c45738"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 SmallModel = "79347ca8-149e-45f0-aa81-dda0fe61ed50"
+TidierData = "fe2206b3-d496-4ee9-a338-6a095c4ece80"
 XLSX = "fdbf4ff8-1666-58a4-91e7-1b58723a45e0"
 
 [compat]
@@ -32,3 +33,4 @@ LazyArtifacts = "1.11.0"
 Makie = "0.20.7"
 ProfileView = "1.10.1"
 SmallModel = "0.1.0"
+TidierData = "0.17.0"
