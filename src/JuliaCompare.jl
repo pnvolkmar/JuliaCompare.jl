@@ -43,7 +43,7 @@ end
 function f_al(df_in)
   df = copy(df_in)
   if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["QC"]
+    @rsubset! df :Area ∈ ["AB"]
   end
   if "Year" ∈ names(df)
     @rsubset! df :Year ∈ [1990]
@@ -55,6 +55,14 @@ function f_al(df_in)
     @rsubset! df :ECC ∈ ["Aluminum"]
   end
   return (df)
+end
+const open_databases = Dict{String, HDF5.File}()
+function CloseAllDatabases()
+  for (db, file) in open_databases
+    close(file)
+  end
+  empty!(open_databases)
+  return length(open_databases)
 end
 
 function f_fp(df_in)
@@ -388,6 +396,12 @@ function diff(df1, df2; name1="new", name2="old")
 end
 
 function diff(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
+  df1 = var(name, loc1)
+  df2 = var(name, loc2)
+  df = diff(df1, df2; name1, name2)
+end
+
+function diff_fast(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
   df1 = var(name, loc1)
   df2 = var(name, loc2)
   df = diff(df1, df2; name1, name2)

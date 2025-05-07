@@ -5,8 +5,8 @@ import SmallModel as M
 import JuliaCompare: db_files, Canada
 using CSV, DataFrames, DataFramesMeta, TidierData
 
-BASE_FOLDER = raw"\\Silver\c\2020CanadaSpruce"
-BASE_FOLDER2 = raw"\\Silver\c\2020CanadaTanoak"
+BASE_FOLDER = raw"\\Pink\c\2020CanadaSpruce"
+BASE_FOLDER2 = raw"\\Pink\c\2020CanadaTanoak"
 SCENARIO1 = "Ref24"
 SCENARIO2 = "Ref24"
 
@@ -192,14 +192,16 @@ J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll")
 # SK, ON, AB are the biggest contributors, though many are present
 J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
 
+TotPol_j = J.var("TotPol", loc2)
 
-# TotPol = J.diff("TotPol", loc1, loc2)
-# J.plot_diff(TotPol; dim="ECC", num=10, title="TotPol diffs by ECC")
+TotPol = J.diff("TotPol", loc1, loc2)
+@rsubset! TotPol :Area ∈ Canada
+J.plot_diff(TotPol; dim="ECC", num=10, title="TotPol diffs by ECC")
 
-# @rsubset! TotPol :ECC == "UtilityGen"
-# J.plot_diff(TotPol; dim="FuelEP", num=10, title="Biomass diffs by FuelEP") # Almost all Natural Gas
-# J.plot_diff(TotPol; dim="Poll", num=10, title="TotPol diffs by Poll") # All CO2
-# J.plot_diff(TotPol; dim="Area", num=10, title="TotPol diffs by Area") # Mostly CA a little in Mtn
+@rsubset! TotPol :ECC == "UtilityGen"
+J.plot_diff(TotPol; dim="FuelEP", num=10, title="Biomass diffs by FuelEP") # Almost all Natural Gas
+J.plot_diff(TotPol; dim="Poll", num=10, title="TotPol diffs by Poll") # All CO2
+J.plot_diff(TotPol; dim="Area", num=10, title="TotPol diffs by Area") # Mostly CA a little in Mtn
 
 # UtilityGen appears to have a lot of historic issues. Let's tackle that first.
 
@@ -219,6 +221,7 @@ Codes = DataFrame(Spruce = UnCode_p, Tanoak = UnCode, Agree = UnCode .== UnCode_
 Codes = J.reconcile_codes(Codes)
 @rsubset Codes :MatchAfterTransform == false
 
+@rsubset Codes :Spruce == "NL_Cg_ECC34_OGSteam"
 
 UnPlant_j = M.ReadDisk(db,"EGInput/UnPlant")
 UnPlant_p = P.data(joinpath(DATA_FOLDER1,"EGInput.dba"), "UnPlant")
@@ -275,75 +278,54 @@ sort(df, :Diff)
 UnGCCE = J.diff("UnGCCE", loc1, loc2)
 df = @rsubset! UnGCCE :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) != 0;
 sort(df, [:Year, :Diff])
+df = @rsubset UnGCCE :Unit ∈ issue_codes abs(:Diff) > 0.01;
+sort(df, [:Year,:Diff])
 
 xUnGCCR = J.diff("xUnGCCR", loc1, loc2)
-df = @rsubset! xUnGCCR :Year ∈ [2024,2025] :Unit ∈ issue_codes abs(:Diff) != 0;
-sort(df, [:Year, :Diff])
-
-xUnGCCI = J.diff("xUnGCCI", loc1, loc2)
-df = @rsubset! xUnGCCI :Unit ∈ issue_codes abs(:Diff) != 0;
-sort(df, [:Year, :Diff])
+df = @rsubset xUnGCCR :Unit ∈ issue_codes abs(:Diff) > 0.01;
+sort(df, [:Year,:Diff])
 
 UnGCCI = J.diff("UnGCCI", loc1, loc2)
-df = @rsubset! UnGCCI :Unit ∈ issue_codes abs(:Diff) > 0.1;
-sort(df, [:Year, :Diff])
+df = @rsubset UnGCCI :Unit ∈ issue_codes abs(:Diff) > 0.01;
+sort(df, [:Year,:Diff])
 
-# HDGCCI = J.diff("HDGCCI", loc1, loc2) # didn't work
-HDGCCI_p = J.var("HDGCCI", loc1)
-@rsubset! HDGCCI_p :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] :Spruce!= 0
+xUnGCCI = J.diff("xUnGCCI", loc1, loc2)
+df = @rsubset xUnGCCI :Unit ∈ issue_codes abs(:Diff) > 0.01;
+sort(df, [:Year,:Diff])
 
+CgGCCI = J.diff("CgGCCI", loc1, loc2)
+df = @rsubset CgGCCI :Unit ∈ issue_codes abs(:Diff) > 0.01;
+sort(df, [:Year,:Diff])
 
-dimension_filters= Dict(:Node => "SK", :GenCo => "SK", :Area => "SK", :Year => ["2023","2024"])
-HDGCCI_j = M.ReadDisk(loc2.HDF5_path, "EGOutput/HDGCCI");
-sets = M.ReadSets(loc2.HDF5_path, "EGOutput/HDGCCI")
-arr, indes = J.subset_array(HDGCCI_j, sets, dimension_filters)
-df = J.to_tidy_dataframe(arr, indes)
-df.Year = parse.(Int, df.Year)
-@rsubset df :Value != 0
-test =J.diff(HDGCCI_p, df; name1 = "Spruce", name2 = "Tanoak")
-@rsubset! test :Diff != 0
+max(HDGCCI[plant,node,genco,area],IPGCCI[plant,node,genco,area],RnGCCI[plant,node,genco,area])
 
-
-# PJCIHD
-PJCIHD_p = J.var("PJCIHD", loc1)
-@rsubset! PJCIHD_p :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] :PJCIHD != 0
+HDGCCI = J.diff("HDGCCI", loc1, loc2)
+df = @rsubset HDGCCI :Plant == "SK" :Node == "SK" :Area == "SK" :Year == 2023;
+sort(df, [:Year,:Diff])
 
 
-dimension_filters= Dict(:Node => "SK", :GenCo => "SK", :Area => "SK", :Year => ["2023","2024"])
-PJCIHD_j = M.ReadDisk(loc2.HDF5_path, "EGOutput/PJCIHD");
-sets = M.ReadSets(loc2.HDF5_path, "EGOutput/PJCIHD")
-arr, indes = J.subset_array(PJCIHD_j, sets, dimension_filters)
-df = J.to_tidy_dataframe(arr, indes)
-@rsubset df :Value != 0
-fuckoff = DataFrames.outerjoin(df, PJCIHD_p, on = [:Node, :GenCo, :Area, :Year, :Plant, :Power])
-test =J.diff(PJCIHD_p, df; name1 = "Spruce", name2 = "Tanoak")
-@rsubset! test :Diff != 0
+@rsubset xUnGCCR :Unit == "SK_New_SolarPV"  abs(:Diff) > 0.01
 
-J.var("AwardSwitch", loc1)
-J.var("AwardSwitch", loc2)
-df = J.diff("AwardSwitch", loc1,loc2)
-@rsubset df :Diff != 0
+xUnGCCI = J.diff("xUnGCCI", loc1, loc2)
+@rsubset xUnGCCR :Diff == :Spruce :Diff != 0
+@rsubset xUnGCCI :Unit == "SK_New_SolarPV" :Year > 2020 :Year <2040
 
-PjMnPS = J.diff("PjMnPS", loc1, loc2)
-@rsubset PjMnPS :Diff != 0
+GAProd = J.var("GAProd", loc2)
+@rsubset GAProd isnan(:Value)
 
-HDIPGC = J.diff("HDIPGC", loc1, loc2)
-@rsubset HDIPGC :Diff != 0 :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] 
+import SmallModel: ReadDisk
+CurTime::Float64 = ReadDisk(db,"CInput/CurTime")[1] # Year for capital costs [tv]
+YrDCC::Int = Int(CurTime)
 
-GCPot = J.diff("GCPot", loc1, loc2)
-@rsubset GCPot :Diff != 0 :Node == "SK" :Area == "SK" :Year ∈ [2023,2024] 
+xungccr = ReadDisk(db, "EGInput/xUnGCCR");
+xungccr_df = ReadDisk(DataFrame, db, "EGInput/xUnGCCR");
+xungccr_df[2124,:]
+xungccr[2124,40]
 
-GCDev = J.diff("GCDev", loc1, loc2)
-@rsubset GCDev :Diff != 0 :Node == "SK" :Area == "SK" :Year ∈ [2023,2024] 
-
-GCDev = J.diff("GCDev", loc1, loc2)
-@rsubset GCDev :Diff != 0 :Node == "SK" :Area == "SK" :Year ∈ [2023,2024] 
-
-GCDevTime = J.diff("GCDevTime", loc1, loc2)
-@rsubset GCDevTime :Year ∈ [2023,2024] :Diff != 0 
-
-HDRetire = J.diff("HDRetire", loc1, loc2)
-@rsubset HDRetire :Year ∈ [2023,2024] :Diff != 0 :Node ∈ Canada
-
-CapCredit = J.diff("CapCredit", loc1, loc2)
-@rsubset CapCredit :Year ∈ [2023,2024] abs(:Diff) >= 0.01 :Area ∈ Canada
+wtf = J.var("EGInput/xUnGCCR", loc2)
+@rsubset wtf :Value == 19.264
+wtf2024 = @rsubset wtf :Year == 2024
+findall(wtf2024.Value .== 19.264)
+wtf2024[2124,:]
+UnCode = ReadDisk(db, "EGInput/UnCode")
+UnCode[2124]
