@@ -83,6 +83,101 @@ import SmallModel: ReadDisk
 
 POCA = P.data(joinpath(DATA_FOLDER1,"TOutput2.dba"),"POCA");
 POCA_j = M.ReadDisk(loc2.HDF5_path, "TOutput/POCA");
+sets = M.ReadSets(loc2.HDF5_path, "TOutput/POCA")
+dimension_filters= Dict(:EC => "ResidentialOffRoad", :FuelEP => "Ethanol", :Tech => "OffRoad", :Area => "ON", :Year => ["2020","2021"])
+POCA_p, set_p = J.subset_array(POCA, sets, dimension_filters)
+POCA_dfp = J.to_tidy_dataframe(POCA_p, set_p)
+POCA_j, set_j = J.subset_array(POCA_j, sets, dimension_filters)
+POCA_dfj = J.to_tidy_dataframe(POCA_j, set_j)
+POCA_df = J.diff(POCA_dfp, POCA_dfj; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! POCA_df :Diff != 0
+sort(POCA_df, [:Year, :Diff])
+
+POCX = P.data(joinpath(BASE_FOLDER,"2020Model","Calib3","TInput.dba"),"POCX");
+POCX = P.data(joinpath(DATA_FOLDER1,"TInput.dba"),"POCX");
+POCX = P.data(joinpath(BASE_FOLDER,"2020Model","Calib4","TInput.dba"),"POCX");
+POCX_j = M.ReadDisk(loc2.HDF5_path, "TInput/POCX");
+sets = M.ReadSets(loc2.HDF5_path, "TInput/POCX")
+dimension_filters= Dict(:EC => "ResidentialOffRoad", :FuelEP => ["Ethanol", "Gasoline"], 
+  :Tech => "OffRoad", :Area => "ON", :Year => ["2020","2021"], :Poll => ["COX", "CO2"])
+POCX_p, set_p = J.subset_array(POCX, sets, dimension_filters)
+POCX_dfp = J.to_tidy_dataframe(POCX_p, set_p)
+POCX_j, set_j = J.subset_array(POCX_j, sets, dimension_filters)
+POCX_dfj = J.to_tidy_dataframe(POCX_j, set_j)
+POCX_df = J.diff(POCX_dfp, POCX_dfj; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! POCX_df :Diff != 0
+sort(POCX_df, [:Year, :Diff])
+
+xTrEnFPol = P.data(joinpath(BASE_FOLDER,"2020Model","Calib3","TInput.dba"),"xTrEnFPol");
+xTrEnFPol = P.data(joinpath(DATA_FOLDER1,"TInput.dba"),"xTrEnFPol");
+xTrEnFPol = P.data(joinpath(BASE_FOLDER,"2020Model","Calib4","TInput.dba"),"xTrEnFPol");
+xTrEnFPol_j = M.ReadDisk(loc2.HDF5_path, "TInput/xTrEnFPol");
+sets = M.ReadSets(loc2.HDF5_path, "TInput/xTrEnFPol")
+dimension_filters= Dict(:EC => "ResidentialOffRoad", :FuelEP => ["Ethanol", "Gasoline"], 
+  :Tech => "OffRoad", :Area => "ON", :Year => ["2020","2021"], :Poll => ["COX", "CO2"])
+xTrEnFPol_p, set_p = J.subset_array(xTrEnFPol, sets, dimension_filters)
+xTrEnFPol_dfp = J.to_tidy_dataframe(xTrEnFPol_p, set_p)
+xTrEnFPol_j, set_j = J.subset_array(xTrEnFPol_j, sets, dimension_filters)
+xTrEnFPol_dfj = J.to_tidy_dataframe(xTrEnFPol_j, set_j)
+xTrEnFPol_df = J.diff(xTrEnFPol_dfp, xTrEnFPol_dfj; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! xTrEnFPol_df :Diff != 0
+sort(xTrEnFPol_df, [:Year, :Diff])
+
+xOREnFPol = P.data(joinpath(BASE_FOLDER,"2020Model","Calib3","SInput.dba"),"xOREnFPol");
+xOREnFPol = P.data(joinpath(BASE_FOLDER,"2020Model","Calib4","SInput.dba"),"xOREnFPol");
+xOREnFPol = P.data(joinpath(DATA_FOLDER1,"SInput.dba"),"xOREnFPol");
+xOREnFPol_j = M.ReadDisk(loc2.HDF5_path, "SInput/xOREnFPol");
+sets = M.ReadSets(loc2.HDF5_path, "SInput/xOREnFPol")
+dimension_filters= Dict(:EC => "ResidentialOffRoad", :ECC => "ResidentialOffRoad", :FuelEP => ["Ethanol", "Gasoline"], 
+  :Tech => "OffRoad", :Area => "ON", :Year => ["2020","2021"], :Poll => ["COX", "CO2"])
+xOREnFPol_p, set_p = J.subset_array(xOREnFPol, sets, dimension_filters)
+xOREnFPol_dfp = J.to_tidy_dataframe(xOREnFPol_p, set_p)
+xOREnFPol_j, set_j = J.subset_array(xOREnFPol_j, sets, dimension_filters)
+xOREnFPol_dfj = J.to_tidy_dataframe(xOREnFPol_j, set_j)
+xOREnFPol_df = J.diff(xOREnFPol_dfp, xOREnFPol_dfj; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! xOREnFPol_df :Diff != 0
+sort(xOREnFPol_df, [:Year, :Diff])
+
+push!(dimension_filters, :Poll => "COX")
+
+POEM = P.data(joinpath(DATA_FOLDER1,"TOutput2.dba"),"POEM");
+POEM_j = M.ReadDisk(loc2.HDF5_path, "TOutput/POEM");
+sets = M.ReadSets(loc2.HDF5_path, "TOutput/POEM")
+POEM_p, set_p = J.subset_array(POEM, sets, dimension_filters)
+POEM_dfp = J.to_tidy_dataframe(POEM_p, set_p)
+POEM_j, set_j = J.subset_array(POEM_j, sets, dimension_filters)
+POEM_dfj = J.to_tidy_dataframe(POEM_j, set_j)
+POEM_df = J.diff(POEM_dfp, POEM_dfj; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! POEM_df :Diff != 0
+sort(POEM_df, [:Year, :Diff])
+
+POEMA = P.data(joinpath(DATA_FOLDER1,"TOutput2.dba"),"POEMA");
+POEMA_j = M.ReadDisk(loc2.HDF5_path, "TOutput/POEMA");
+sets = M.ReadSets(loc2.HDF5_path, "TOutput/POEMA")
+POEMA_p, set_p = J.subset_array(POEMA, sets, dimension_filters)
+POEMA_dfp = J.to_tidy_dataframe(POEMA_p, set_p)
+POEMA_j, set_j = J.subset_array(POEMA_j, sets, dimension_filters)
+POEMA_dfj = J.to_tidy_dataframe(POEMA_j, set_j)
+POEMA_df = J.diff(POEMA_dfp, POEMA_dfj; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! POEMA_df :Diff != 0
+sort(POEMA_df, [:Year, :Diff])
+
+DER = P.data(joinpath(DATA_FOLDER1,"TOutput.dba"),"DER");
+DER_j = M.ReadDisk(loc2.HDF5_path, "TOutput/DER");
+sets = M.ReadSets(loc2.HDF5_path, "TOutput/DER")
+DER_p, set_p = J.subset_array(DER, sets, dimension_filters)
+DER_dfp = J.to_tidy_dataframe(DER_p, set_p)
+DER_j, set_j = J.subset_array(DER_j, sets, dimension_filters)
+DER_dfj = J.to_tidy_dataframe(DER_j, set_j)
+DER_df = J.diff(DER_dfp, DER_dfj; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! DER_df :Diff != 0
+sort(DER_df, [:Year, :Diff])
+
+RM = J.diff("TOutput/RM", loc1, loc2)
+RM = J.f_on(RM)
+
+StockAdjustment = J.diff("TInput/StockAdjustment", loc1, loc2)
+StockAdjustment = J.f_on(StockAdjustment)
 
 POCA = J.diff("TOutput/POCA", loc1, loc2)
 POCA = J.f_on(POCA)
@@ -195,9 +290,7 @@ sort(df, [:Year, :Diff])
 
 # HDGCCI = J.diff("HDGCCI", loc1, loc2) # didn't work
 HDGCCI_p = J.var("HDGCCI", loc1)
-@rsubset HDGCCI_p :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] :HDGCCI != 0
-HDGCCI_j = J.ReadDisk(DataFrame, loc2.HDF5_path, "EGOutput/HDGCCI"; Dict)
-@rsubset HDGCCI_j :Node == "SK" :GenCo == "SK" :Area == "SK" :Year == 2023
+@rsubset! HDGCCI_p :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] :Spruce!= 0
 
 
 dimension_filters= Dict(:Node => "SK", :GenCo => "SK", :Area => "SK", :Year => ["2023","2024"])
@@ -205,15 +298,52 @@ HDGCCI_j = M.ReadDisk(loc2.HDF5_path, "EGOutput/HDGCCI");
 sets = M.ReadSets(loc2.HDF5_path, "EGOutput/HDGCCI")
 arr, indes = J.subset_array(HDGCCI_j, sets, dimension_filters)
 df = J.to_tidy_dataframe(arr, indes)
-node = M.Select(sets.Node, "SK")
-area = M.Select(sets.Area, "SK")
-genco = M.Select(sets.GenCo, "SK")
-year = M.Select(sets.Year, ["2023","2024"])
-df = hcat(sets.Plant, HDGCCI_j[:,node, genco, area, year]);
-@rsubset df[df[:,2] .!=0, !]
-urange = [1:length(s) for s in sets]
-HDGCCI_j[urange...]
-for (key, value) in pairs(sets)
-    println("Key: $key, Value: $value")
-end
-∈
+df.Year = parse.(Int, df.Year)
+@rsubset df :Value != 0
+test =J.diff(HDGCCI_p, df; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! test :Diff != 0
+
+
+# PJCIHD
+PJCIHD_p = J.var("PJCIHD", loc1)
+@rsubset! PJCIHD_p :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] :PJCIHD != 0
+
+
+dimension_filters= Dict(:Node => "SK", :GenCo => "SK", :Area => "SK", :Year => ["2023","2024"])
+PJCIHD_j = M.ReadDisk(loc2.HDF5_path, "EGOutput/PJCIHD");
+sets = M.ReadSets(loc2.HDF5_path, "EGOutput/PJCIHD")
+arr, indes = J.subset_array(PJCIHD_j, sets, dimension_filters)
+df = J.to_tidy_dataframe(arr, indes)
+@rsubset df :Value != 0
+fuckoff = DataFrames.outerjoin(df, PJCIHD_p, on = [:Node, :GenCo, :Area, :Year, :Plant, :Power])
+test =J.diff(PJCIHD_p, df; name1 = "Spruce", name2 = "Tanoak")
+@rsubset! test :Diff != 0
+
+J.var("AwardSwitch", loc1)
+J.var("AwardSwitch", loc2)
+df = J.diff("AwardSwitch", loc1,loc2)
+@rsubset df :Diff != 0
+
+PjMnPS = J.diff("PjMnPS", loc1, loc2)
+@rsubset PjMnPS :Diff != 0
+
+HDIPGC = J.diff("HDIPGC", loc1, loc2)
+@rsubset HDIPGC :Diff != 0 :Node == "SK" :GenCo == "SK" :Area == "SK" :Year ∈ [2023,2024] 
+
+GCPot = J.diff("GCPot", loc1, loc2)
+@rsubset GCPot :Diff != 0 :Node == "SK" :Area == "SK" :Year ∈ [2023,2024] 
+
+GCDev = J.diff("GCDev", loc1, loc2)
+@rsubset GCDev :Diff != 0 :Node == "SK" :Area == "SK" :Year ∈ [2023,2024] 
+
+GCDev = J.diff("GCDev", loc1, loc2)
+@rsubset GCDev :Diff != 0 :Node == "SK" :Area == "SK" :Year ∈ [2023,2024] 
+
+GCDevTime = J.diff("GCDevTime", loc1, loc2)
+@rsubset GCDevTime :Year ∈ [2023,2024] :Diff != 0 
+
+HDRetire = J.diff("HDRetire", loc1, loc2)
+@rsubset HDRetire :Year ∈ [2023,2024] :Diff != 0 :Node ∈ Canada
+
+CapCredit = J.diff("CapCredit", loc1, loc2)
+@rsubset CapCredit :Year ∈ [2023,2024] abs(:Diff) >= 0.01 :Area ∈ Canada

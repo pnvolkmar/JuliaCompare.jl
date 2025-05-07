@@ -549,7 +549,7 @@ function archive_search(Needle::String)
 end
 
 """
-  subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters::Dict{Symbol, <:Any})
+    subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters::Dict{Symbol, <:Any})
 
 Filters a multi-dimensional array based on dimension names and values.
 
@@ -559,73 +559,68 @@ Filters a multi-dimensional array based on dimension names and values.
 - `dimension_filters::Dict{Symbol, <:Any}`: Dictionary mapping dimension names to filter values
 
 # Returns
-- `Array`: A new array with only the filtered values
-
-# Example
-```julia
-dimension_filters = Dict(:Node => "SK", :GenCo => "SK", :Area => "SK")
-filtered_array = subset_array(original_array, sets, dimension_filters)
-```
+- `Tuple{Array, NamedTuple}`: A tuple containing the filtered array and the filtered dimension sets
 """
-
 function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters::Dict{Symbol, <:Any})
-  # Get the dimensions of the array
-  dims = ndims(array)
-  # Get the named dimensions
-  dim_names = collect(propertynames(sets))
-  
-  # Check that dimensions match
-  if dims != length(dim_names)
-    error("Number of dimensions in array ($(dims)) doesn't match number of sets ($(length(dim_names)))")
-  end
-  
-  # Create selections for each dimension
-  indices_by_dim = []
-  filtered_sets_dict = Dict{Symbol, Vector}()
-  
-  for dim_name in dim_names
-    dim_values = getproperty(sets, dim_name)
+    # Get the dimensions of the array
+    dims = ndims(array)
     
-    if haskey(dimension_filters, dim_name)
-      filter_value = dimension_filters[dim_name]
-      
-      # Find the indices that match the filter
-      if filter_value isa Function
-        # Function filter
-        indices = findall(filter_value, dim_values)
-      elseif filter_value isa AbstractArray
-        # Array of values
-        indices = findall(x -> x in filter_value, dim_values)
-      else
-        # Single value (exact match)
-        indices = findall(x -> x == filter_value, dim_values)
-      end
-      
-      if isempty(indices)
-        error("No values found for filter $(dim_name) => $(filter_value)")
-      end
-      
-      push!(indices_by_dim, indices)
-      filtered_sets_dict[dim_name] = dim_values[indices]
-    else
-      # No filter for this dimension, select all
-      push!(indices_by_dim, collect(1:length(dim_values)))
-      filtered_sets_dict[dim_name] = dim_values
+    # Get the named dimensions - preserve the original order
+    dim_names = collect(propertynames(sets))
+    
+    # Check that dimensions match
+    if dims != length(dim_names)
+        error("Number of dimensions in array ($(dims)) doesn't match number of sets ($(length(dim_names)))")
     end
-  end
-  
-  # Create indexing expressions for each dimension
-  indexing = Tuple(indices_by_dim)
-  
-  # Extract the subarray using the indices
-  result = array[indexing...]
-  
-  # Convert the filtered sets dictionary to a NamedTuple
-  filtered_sets = NamedTuple{Tuple(keys(filtered_sets_dict))}(Tuple(values(filtered_sets_dict)))
-
-  return result, filtered_sets
+    
+    # Create selections for each dimension
+    indices_by_dim = []
+    filtered_sets_dict = Dict{Symbol, Vector}()
+    
+    for dim_name in dim_names
+        dim_values = getproperty(sets, dim_name)
+        
+        if haskey(dimension_filters, dim_name)
+            filter_value = dimension_filters[dim_name]
+            
+            # Find the indices that match the filter
+            if filter_value isa Function
+                # Function filter
+                indices = findall(filter_value, dim_values)
+            elseif filter_value isa AbstractArray
+                # Array of values
+                indices = findall(x -> x in filter_value, dim_values)
+            else
+                # Single value (exact match)
+                indices = findall(x -> x == filter_value, dim_values)
+            end
+            
+            if isempty(indices)
+                error("No values found for filter $(dim_name) => $(filter_value)")
+            end
+            
+            push!(indices_by_dim, indices)
+            filtered_sets_dict[dim_name] = dim_values[indices]
+        else
+            # No filter for this dimension, select all
+            indices = collect(1:length(dim_values))
+            push!(indices_by_dim, indices)
+            filtered_sets_dict[dim_name] = dim_values
+        end
+    end
+    
+    # Create indexing expressions for each dimension
+    indexing = Tuple(indices_by_dim)
+    
+    # Extract the subarray using the indices
+    result = array[indexing...]
+    
+    # Convert the filtered sets dictionary to a NamedTuple with the SAME order as original sets
+    filtered_sets = NamedTuple{Tuple(dim_names)}(Tuple(filtered_sets_dict[name] for name in dim_names))
+    
+    return result, filtered_sets
 end
-  
+
 """
     to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
 
@@ -648,7 +643,6 @@ df = to_tidy_dataframe(filtered_array, filtered_sets)
 function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
   # Get the dimension names
   dim_names = collect(propertynames(sets))
-  
   # Check that dimensions match
   if ndims(array) != length(dim_names)
     error("Number of dimensions in array ($(ndims(array))) doesn't match number of sets ($(length(dim_names)))")
@@ -690,8 +684,13 @@ function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
   # Add the value column
   df[!, :Value] = value_column
   
+  if :Year ∈ dim_names
+    df.Year = parse.(Int64, df.Year)
+  end
+  
   return df
 end
+
   
   
       
