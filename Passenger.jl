@@ -30,12 +30,12 @@ J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
 # J.plot_diff(@rsubset EuFPol :FuelEP == "Biomass"; dim="ECC", num=10, title="Biomass diffs by ECC")
 
 
-@rsubset! EuFPol :ECC == "UtilityGen"
-# Almost all Natural Gas in the future and Coal in the past
+@rsubset! EuFPol :ECC == "Passenger"
+# Almost all Gasoline and Diesel
 J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
-# All CO2 in the future and SOX/NOX in the past
+# CO2 mainly wiht a little COX
 J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
-# SK, ON, AB are the biggest contributors, though many are present
+# ON, AB, BC are the biggest contributors, though many are present
 J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
 
 TotPol_j = J.var("TotPol", loc2)

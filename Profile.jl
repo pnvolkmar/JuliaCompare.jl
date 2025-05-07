@@ -24,7 +24,21 @@ vars_j = J.list_vars(HDF5_path)
 loc1 = J.Loc_p(vars, DATA_FOLDER1, "Spruce");
 loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
 
-EuFPol = J.diff("EuFPol", loc1, loc2)
+@time EuFPol = J.diff("EuFPol", loc1, loc2)
+@time J.var("EuFPol", loc2)
+using Profile, ProfileView
+ProfileView.@profview EuFPol = J.diff("EuFPol", loc1, loc2)
+
+# Clear any previous profiling data
+Profile.clear()
+
+# Profile with default settings
+@profile EuFPol = J.diff("EuFPol", loc1, loc2)
+
+# View results in the terminal
+Profile.print()
+
+
 @rsubset! EuFPol :Area ∈ Canada
 J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
 # J.plot_diff(@rsubset EuFPol :FuelEP == "Biomass"; dim="ECC", num=10, title="Biomass diffs by ECC")
