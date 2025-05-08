@@ -8,6 +8,7 @@ using Colors, CategoricalArrays
 import SmallModel: ReadDisk, ReadSets
 
 include("UnCodeMapping.jl")
+include("TidyingArrays.jl")
 
 greet() = print("Hello Randy")
 
