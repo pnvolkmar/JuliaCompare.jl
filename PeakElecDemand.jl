@@ -24,25 +24,57 @@ vars_j = J.list_vars(HDF5_path)
 loc1 = J.Loc_p(vars, DATA_FOLDER1, "Spruce");
 loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
 dimension_filters = Dict{Symbol,Any}()
-EuFPol = J.diff("EuFPol", loc1, loc2)
-@rsubset! EuFPol :Area ∈ Canada
-J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
+HDPDP = J.diff("HDPDP", loc1, loc2)
 
-@rsubset! EuFPol :ECC == "Passenger"
-# Almost all Gasoline and Diesel
-J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
-push!(dimension_filters, :FuelEP => ["Gasoline","Diesel"])
+Node = M.ReadDisk(loc2.HDF5_path, "EInput/Node")
+Canada_Nodes = Node[1:14]
+@rsubset! HDPDP :Node ∈ Canada_Nodes
+@rsubset! HDPDP :Spruce != 0 && :Tanoak != 0
+J.plot_diff(HDPDP; dim="Node", num=10, title="HDPDP diffs by Node")
 
-# CO2 mainly with trace COX
-@rsubset! EuFPol :Spruce != 0 && :Tanoak != 0
-J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
-push!(dimension_filters, :Poll => "CO2")
-# ON, AB, BC are the biggest contributors, though many are present
-J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area")
-push!(dimension_filters, :Area => "ON")
+push!(dimension_filters, :Node => "QC")
+J.subset_dataframe!(HDPDP, dimension_filters) # Not working yet
+
+J.plot_diff(HDPDP; dim="Month", num=10, title="HDPDP diffs by Month") 
+HDPDP.Diff = HDPDP.Diff ./ HDPDP.Spruce
+J.plot_diff(HDPDP; dim="TimeP", num=10, title="HDPDP diffs by TimeP") 
+@rsubset HDPDP :Year == 2035
+HDPDP.Diff = HDPDP.Spruce .- HDPDP.Tanoak
+
+xPkLoad = J.diff_fast("xPkLoad", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset xPkLoad :Year == 2003 >= 0.01 :Area == "QC"
+
+PkLoad = J.diff_fast("PkLoad", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset PkLoad abs(:Diff) >= 0.01 :Area == "QC"
+
+SLDC[hour,day,month,area] = sum(LDCECC[ecc,hour,day,month,area] for ecc in ECCs)/TDEF[electric,area]
+push!(dimension_filters, :Area => "QC")
+SLDC = J.diff_fast("SLDC", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset SLDC :Diff != 0 :Year ∈ [1986,2002,2003]
+push!(dimension_filters, :Year => ["1986","2002","2003"])
+push!(dimension_filters, :Month => "Winter")
+
+LDCECC = J.diff_fast("LDCECC", loc1, loc2; dimension_filters, sec = 'E')
+TDEF = J.diff_fast("TDEF", loc1, loc2; dimension_filters, sec = 'E')
+J.plot_diff(LDCECC; dim="ECC", num=10, title="LDCECC diffs by ECC")
+push!(dimension_filters, :ECC => "Aluminum")
+push!(dimension_filters, :EC => "Aluminum")
+
+SaEC[ecc,area]*CLSF[class,hour,average,month,area]/8760*1000
+SaEC = J.diff_fast("SaEC", loc1, loc2; dimension_filters, sec = 'E')
+
+# ElecDmd[ecc,area] = sum(ESales[enduse,ec,area] for enduse in Enduses)
+# SaEC[ecc,area] = ElecDmd[ecc,area]-CgEC[ecc,area]+PSoECC[ecc,area]
+ESales = J.diff_fast("ESales", loc1, loc2; dimension_filters, sec = 'I')
+CgEC = J.diff_fast("CgEC", loc1, loc2; dimension_filters, sec = 'I')
+PSoECC = J.diff_fast("PSoECC", loc1, loc2; dimension_filters, sec = 'I')
+
+#     CgEC[ecc,area] = sum(CgGen[fuel,ecc,area] for fuel in Fuels)
+CgGen = J.diff_fast("CgGen", loc1, loc2; dimension_filters, sec = 'I')
+@rsubset CgGen abs(:Diff) > 0.01
 
 
-Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters)
+Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters, sec = 'E')
 sec = 'T'
 Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters, sec)
 J.plot_diff(Polute; dim="Tech", num=10, title="Polute diffs by Tech")

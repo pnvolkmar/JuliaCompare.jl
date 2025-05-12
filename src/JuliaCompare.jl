@@ -388,9 +388,15 @@ function diff(df1, df2; name1="new", name2="old")
   dims != names(df2)[1:end-1] && error("Dimensions don't match")
   rename!(df1, [dims; name1])
   rename!(df2, [dims; name2])
-  df = outerjoin(df1, df2, on=dims, makeunique=true)
-  replace!(df[!, Symbol(name1)], missing => 0)
-  replace!(df[!, Symbol(name2)], missing => 0)
+  if size(df1) == size(df2)
+    df = hcat(df1, df2[!, Symbol(name2)])
+    rename!(df, [dims; name1; name2])
+    println("Assuming DataFrame rows match")
+  else
+    df = outerjoin(df1, df2, on=dims, makeunique=true)
+    replace!(df[!, Symbol(name1)], missing => 0)
+    replace!(df[!, Symbol(name2)], missing => 0)
+  end
   df.Diff = df[:, Symbol(name1)] .- df[:, Symbol(name2)]
   # @transform!(df, :Diff = name1 - name2)
   return (df)
@@ -432,7 +438,7 @@ function lookup_database(name, loc; sec::Char="")
       return (temp.Variable[1], temp.Database[1])
     elseif m == 0
       println(name, " not found in vars, perhaps your variable is in the list below\n")
-      temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
+      temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(name)))
       println(vars[temp2,[:Variable, :Database]])
       error("Variable not found")
       return (vars[temp2,[:Variable, :Database]])
@@ -517,6 +523,7 @@ function tops(df; dim="ECC", num=10)
 end
 
 function plot_diff(data; dim="ECC", num=10, title="New Plot")
+  dim = dim isa String ? dim : string(dim)
   df = deepcopy(data)
   ss = tops(df; dim, num)
   others = setdiff(df[:, dim], ss)
@@ -702,6 +709,219 @@ function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters:
     filtered_sets = NamedTuple{Tuple(dim_names)}(Tuple(filtered_sets_dict[name] for name in dim_names))
     
     return result, filtered_sets
+end
+
+"""
+    subset_dataframe(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+
+Filter a DataFrame based on conditions specified in a dictionary.
+
+# Arguments
+- `df`: The DataFrame to filter
+- `filters`: Dictionary where keys are column names and values are the filter conditions
+- `drop_filtered_cols`: If true, removes the filtered columns from the result (default: false)
+
+# Filter conditions can be:
+- A single value (equality condition)
+- A vector of values (in condition)
+- A range (for numeric columns)
+- A function that takes a value and returns a boolean
+- A Regex for string columns (matches if value contains the pattern)
+
+# Returns
+- A filtered DataFrame that meets all conditions
+
+# Example
+```julia
+df = DataFrame(
+    Year = [2020, 2021, 2022, 2023],
+    Region = ["North", "South", "North", "East"],
+    Value = [100, 150, 120, 200]
+)
+
+# Filter rows where Year is 2022 or 2023 AND Region is "North"
+result = subset_dataframe(df, Dict(
+    "Year" => [2022, 2023],  # Multiple values
+    "Region" => "North"      # Single value
+))
+
+# Using ranges and functions
+result = subset_dataframe(df, Dict(
+    "Year" => 2021:2023,            # Range
+    "Value" => x -> x > 100,        # Function condition
+    "Region" => r"^[NS]"            # Regex (starts with N or S)
+))
+
+# Drop filtered columns after filtering
+result = subset_dataframe(df, Dict("Year" => 2022), drop_filtered_cols=true)
+```
+"""
+function subset_dataframe!(df::DataFrame, filters::Dict{<:Any,<:Any}; drop_filtered_cols::Bool=false)
+  # Check if the DataFrame is empty
+  isempty(df) && return df
+  
+  # Keep track of columns we've filtered on
+  filtered_cols = Symbol[]
+  
+  # Apply each filter
+  for (col_key, condition) in filters
+      # Handle different key types (Symbol, String, etc.)
+      col_sym = col_key isa Symbol ? col_key : Symbol(string(col_key))
+      
+      # Check if the column exists in the DataFrame
+      if !(col_sym in names(df))
+          # Skip this filter if column doesn't exist
+          continue
+      end
+      
+      # Add to list of filtered columns
+      push!(filtered_cols, col_sym)
+      
+      # Apply the filter based on the condition type
+      if condition isa AbstractVector
+          # Vector of allowed values
+          filter!(row -> row[col_sym] in condition, df)
+      elseif condition isa AbstractRange
+          # Range of values
+          filter!(row -> row[col_sym] in condition, df)
+      elseif condition isa Function
+          # Function that returns boolean
+          filter!(row -> condition(row[col_sym]), df)
+      elseif condition isa Regex && eltype(df[!, col_sym]) <: AbstractString
+          # Regex pattern for string columns
+          filter!(row -> !isnothing(match(condition, row[col_sym])), df)
+      else
+          # Single value equality check
+          filter!(row -> row[col_sym] == condition, df)
+      end
+  end
+  
+  # Drop the filtered columns if requested
+  if drop_filtered_cols && !isempty(filtered_cols)
+      select!(df, Not(filtered_cols))
+  end
+  
+  return df
+end
+
+"""
+    subset_dataframe!(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+
+In-place version of subset_dataframe that modifies the input DataFrame directly.
+
+# Arguments and behavior are the same as subset_dataframe
+"""
+function subset_dataframe!(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+    # Check if the DataFrame is empty
+    isempty(df) && return df
+    
+    # Keep track of columns we've filtered on
+    filtered_cols = String[]
+    
+    # Create a mask for all rows
+    mask = trues(nrow(df))
+    
+    # Apply each filter to update the mask
+    for (col, condition) in filters
+        # Check if the column exists in the DataFrame
+        col_sym = col isa Symbol ? col : Symbol(string(col))
+        if !(col_sym in Symbol.(names(df)))
+          println("Column $col not found in DataFrame $(names(df))")
+            # Skip this filter if column doesn't exist
+            continue
+        end
+        
+        # Add to list of filtered columns
+        push!(filtered_cols, string(col))
+        
+        # Update the mask based on the condition type
+        if condition isa AbstractVector
+            # Vector of allowed values
+            for i in 1:nrow(df)
+                mask[i] = mask[i] && (df[i, col_sym] in condition)
+            end
+        elseif condition isa AbstractRange
+            # Range of values
+            for i in 1:nrow(df)
+                mask[i] = mask[i] && (df[i, col_sym] in condition)
+            end
+        elseif condition isa Function
+            # Function that returns boolean
+            for i in 1:nrow(df)
+                mask[i] = mask[i] && condition(df[i, col_sym])
+            end
+        elseif condition isa Regex
+            # Regex pattern for string columns
+            for i in 1:nrow(df)
+                val = df[i, col_sym]
+                mask[i] = mask[i] && (typeof(val) <: AbstractString && 
+                                     !isnothing(match(condition, val)))
+            end
+        else
+            # Single value equality check
+            for i in 1:nrow(df)
+                mask[i] = mask[i] && (df[i, col_sym] == condition)
+            end
+        end
+    end
+    
+    # Apply the final mask
+    deleteat!(df, .!mask)
+    
+    # Drop the filtered columns if requested
+    if drop_filtered_cols && !isempty(filtered_cols)
+        select!(df, Not(Symbol.(filtered_cols)))
+    end
+    
+    return df
+end
+
+# Performance optimized version for large DataFrames
+"""
+    subset_dataframe_optimized(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+
+Optimized version of subset_dataframe that uses DataFrames.jl's built-in filtering
+capabilities more efficiently. This version is faster for large DataFrames.
+
+# Arguments and behavior are the same as subset_dataframe
+"""
+function subset_dataframe_optimized(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+    # Check if the DataFrame is empty
+    isempty(df) && return df
+    
+    result_df = df
+    filtered_cols = String[]
+    
+    for (col, condition) in filters
+        # Check if the column exists in the DataFrame
+        col_sym = Symbol(col)
+        if !(col in names(result_df) || col_sym in names(result_df))
+            continue
+        end
+        
+        push!(filtered_cols, string(col))
+        
+        # Use DataFrame's built-in filtering with ByRow for better performance
+        if condition isa AbstractVector
+            result_df = filter(col_sym => ByRow(x -> x in condition), result_df)
+        elseif condition isa AbstractRange
+            result_df = filter(col_sym => ByRow(x -> x in condition), result_df)
+        elseif condition isa Function
+            result_df = filter(col_sym => ByRow(condition), result_df)
+        elseif condition isa Regex
+            result_df = filter(col_sym => ByRow(x -> 
+                typeof(x) <: AbstractString && !isnothing(match(condition, x))), result_df)
+        else
+            result_df = filter(col_sym => ByRow(x -> x == condition), result_df)
+        end
+    end
+    
+    # Drop the filtered columns if requested
+    if drop_filtered_cols && !isempty(filtered_cols)
+        result_df = select(result_df, Not(Symbol.(filtered_cols)))
+    end
+    
+    return result_df
 end
 
 """

@@ -1,7 +1,7 @@
 """
     arrays_to_tidy_df(arrays::AbstractArray...; 
-                      value_names = ["Value$i" for i in 1:length(arrays)],
-                      dim_names = ["Dim$i" for i in 1:ndims(first(arrays))],
+                      value_names = ["Value\$i" for i in 1:length(arrays)],
+                      dim_names = ["Dim\$i" for i in 1:ndims(first(arrays))],
                       index_values = nothing)
 
 Convert multiple arrays of the same dimensions into a tidy DataFrame with:
@@ -116,8 +116,8 @@ end
 # Alternative implementation optimized for large arrays
 """
     arrays_to_tidy_df_optimized(arrays::AbstractArray...; 
-                               value_names = ["Value$i" for i in 1:length(arrays)],
-                               dim_names = ["Dim$i" for i in 1:ndims(first(arrays))],
+                               value_names = ["Value\$i" for i in 1:length(arrays)],
+                               dim_names = ["Dim\$i" for i in 1:ndims(first(arrays))],
                                index_values = nothing)
 
 Optimized version of arrays_to_tidy_df, more efficient for large arrays.

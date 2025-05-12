@@ -37,7 +37,7 @@ sort(@by(issues, :ECC, :Count = length(:Diff)), :Count, rev= true)
 ifelse.(EUFPol)
 J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
 # J.plot_diff(@rsubset EuFPol :FuelEP == "Biomass"; dim="ECC", num=10, title="Biomass diffs by ECC")
-
+@rsubset! EuFPol :ECC != "ForeignPassenger" :ECC != "ForeignFreight" :ECC != "UtilityGen" :ECC != "ResidentialOffRoad"
 
 # This is an issue with Spruce and I'll ignore it. 
 @rsubset! EuFPol :ECC == "ResidentialOffRoad"
@@ -49,16 +49,32 @@ J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll")
 J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
 @by(EuFPol, [:Year], :Diff = sum(abs.(:Diff)))
 
+dimension_filters= Dict{Symbol,Any}(:EC => "Passenger", :ECC => "Passenger")
+EuFPol_p = @rsubset EuFPol :ECC == "Passenger"
+# Gasoline and Diesel
+J.plot_diff(EuFPol_p; dim="FuelEP", num=10, title="EuFPol_p diffs by FuelEP") 
+# CO2 a little COX
+J.plot_diff(EuFPol_p; dim="Poll", num=10, title="EuFPol_p diffs by Poll") 
+# ON biggest contributors, though many are present
+J.plot_diff(EuFPol_p; dim="Area", num=10, title="EuFPol_p diffs by Area") 
 
-# This is an issue with Spruce and I'll ignore it. 
-@rsubset! EuFPol :ECC == "ForeignPassenger"
-# Jet fuel
-J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
-# All CO2 
-J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
-# SK, ON, AB are the biggest contributors, though many are present
-J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
-@by(EuFPol, [:Year], :Diff = sum(abs.(:Diff)))
+push!(dimension_filters, :FuelEP => ["Gasoline", "Diesel"])
+push!(dimension_filters, :Poll => ["CO2", "COX"])
+push!(dimension_filters, :Area => "ON")
+push!(dimension_filters, :Year => "2030")
+
+# # This is an issue with Spruce and I'll ignore it. 
+# @rsubset! EuFPol :ECC == "ForeignPassenger"
+# # Jet fuel
+# J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
+# # All CO2 
+# J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
+# # SK, ON, AB are the biggest contributors, though many are present
+# J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area") 
+# @by(EuFPol, [:Year], :Diff = sum(abs.(:Diff)))
+
+Polute = J.diff_fast("Polute", loc1, loc2; sec = 'T', 
+dimension_filters = dimension_filters)
 
 # OffRoad 
 Polute_p = J.var("TCalDB/Polute", loc1)
