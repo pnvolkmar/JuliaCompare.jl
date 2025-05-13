@@ -5,8 +5,8 @@ import SmallModel as M
 import JuliaCompare: db_files, Canada
 using CSV, DataFrames, DataFramesMeta
 
-BASE_FOLDER = raw"\\Silver\c\2020CanadaSpruce"
-BASE_FOLDER2 = raw"\\Silver\c\2020CanadaTanoak"
+BASE_FOLDER = raw"\\Pink\c\2020CanadaSpruce"
+BASE_FOLDER2 = raw"\\Pink\c\2020CanadaTanoak"
 SCENARIO1 = "Ref24"
 SCENARIO2 = "Ref24"
 
@@ -23,6 +23,7 @@ vars = J.list_vars(CODE_FOLDER, DATA_FOLDER1, db_files);
 vars_j = J.list_vars(HDF5_path)
 loc1 = J.Loc_p(vars, DATA_FOLDER1, "Spruce");
 loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
+
 dimension_filters = Dict{Symbol,Any}()
 EuFPol = J.diff("EuFPol", loc1, loc2)
 @rsubset! EuFPol :Area ∈ Canada
@@ -31,7 +32,9 @@ J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
 @rsubset! EuFPol :ECC == "Passenger"
 # Almost all Gasoline and Diesel
 J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
-push!(dimension_filters, :FuelEP => ["Gasoline","Diesel"])
+push!(dimension_filters, :FuelEP => "Gasoline")
+push!(dimension_filters, :ECC => "Passenger")
+push!(dimension_filters, :EC => "Passenger")
 
 # CO2 mainly with trace COX
 @rsubset! EuFPol :Spruce != 0 && :Tanoak != 0
@@ -46,7 +49,7 @@ Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters)
 sec = 'T'
 Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters, sec)
 J.plot_diff(Polute; dim="Tech", num=10, title="Polute diffs by Tech")
-push!(dimension_filters, :Tech => ["LDVDiesel","LDVGasoline"])
+push!(dimension_filters, :Tech => ["LDVGasoline"])
 push!(dimension_filters, :Year => "2030")
 
 POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, sec)
@@ -58,7 +61,7 @@ POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, sec)
 @rsubset POCA :Diff != 0
 
 DmdFEPTech = J.diff_fast("DmdFEPTech", loc1, loc2; dimension_filters, sec)
-@rsubset DmdFEPTech isapprox(:Diff, 0)
+@rsubset DmdFEPTech !isapprox(:Diff, 0)
 
 DmdFuelTech = J.diff_fast("DmdFuelTech", loc1, loc2; dimension_filters, sec)
 dimension_filters[:FuelEP] = "Gasoline"
@@ -99,11 +102,11 @@ DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, sec)
 StockAdjustment = J.diff_fast("StockAdjustment", loc1, loc2; dimension_filters, sec)
 DERAV = J.diff_fast("DERAV", loc1, loc2; dimension_filters, sec)
 dimension_filters[:Year] = string.(2020:2040)
-DERA   = J.diff_fast("DERA", loc1, loc2; dimension_filters, sec)
-DERAPC = J.diff_fast("DERAPC", loc1, loc2; dimension_filters, sec)
-DERAP = J.diff_fast("DERAP", loc1, loc2; dimension_filters, sec)
-DERAD = J.diff_fast("DERAD", loc1, loc2; dimension_filters, sec)
-DERARC = J.diff_fast("DERARC", loc1, loc2; dimension_filters, sec)
+DERA   = J.diff_fast("DERA", loc1, loc2; dimension_filters, sec = 'T')
+DERAPC = J.diff_fast("DERAPC", loc1, loc2; dimension_filters, sec = 'T')
+DERAP = J.diff_fast("DERAP", loc1, loc2; dimension_filters, sec = 'T')
+DERAD = J.diff_fast("DERAD", loc1, loc2; dimension_filters, sec = 'T')
+DERARC = J.diff_fast("DERARC", loc1, loc2; dimension_filters, sec = 'T')
 
 @rsubset DERA   :Year == 2020
 @rsubset DERAPC :Year == 2020

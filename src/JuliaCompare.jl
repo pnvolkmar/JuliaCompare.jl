@@ -460,8 +460,6 @@ function diff_fast(name::String, loc1, loc2;
   name1 = loc1.name
   name2 = loc2.name
   vname1, dbname1 = lookup_database(name, loc1; sec)
-  println("dbname1 is: ", dbname1)
-  println("vname1 is: ", vname1)
   vname2, dbname2 = lookup_database(name, loc2; sec)
   if typeof(loc1) == Loc_j
     sets = ReadSets(loc1.HDF5_path, string(dbname1,"/", vname1))
