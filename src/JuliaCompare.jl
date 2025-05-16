@@ -409,46 +409,51 @@ function diff(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
 end
 
 function lookup_database(name, loc; sec::Char="")
-  vars = loc.vars
-  temp2 = find_var(name, vars; exact=true)
-  n = nrow(temp2)
-  if n == 1
-    return (temp2.Variable[1], temp2.Database[1])
-  elseif n > 1 && sec == ""
-    println(name, " could have several values, select one of the below\n")
-    println(temp2)
-    error("Variable not found")
-  elseif n > 1 && sec != "" 
-    i = findall(first.(temp2.Database) .== sec)
-    println("Found these options")
-    println(temp2)
-    println("I think you want this one: ", i)
-    if length(i) == 1
-      ind = i[1]
-      return (string(temp2[ind,:Variable]), temp2[ind,:Database])
-    else
+  if contains(name, "/")
+    name_vec = string.(split(name, "/"))
+    return (name_vec[2], name_vec[1])
+  else
+    vars = loc.vars
+    temp2 = find_var(name, vars; exact=true)
+    n = nrow(temp2)
+    if n == 1
+      return (temp2.Variable[1], temp2.Database[1])
+    elseif n > 1 && sec == ""
       println(name, " could have several values, select one of the below\n")
       println(temp2)
       error("Variable not found")
-    end
-  else
-    temp = find_var(name, vars)
-    m = nrow(temp)
-    if m == 1
-      return (temp.Variable[1], temp.Database[1])
-    elseif m == 0
-      println(name, " not found in vars, perhaps your variable is in the list below\n")
-      temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(name)))
-      println(vars[temp2,[:Variable, :Database]])
-      error("Variable not found")
-      return (vars[temp2,[:Variable, :Database]])
-    elseif unique(temp, [:Variable, :Dimensions]) == 1
-      print("Combining ", nrow(temp), "variables")
-      return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
+    elseif n > 1 && sec != "" 
+      i = findall(first.(temp2.Database) .== sec)
+      println("Found these options")
+      println(temp2)
+      println("I think you want this one: ", i)
+      if length(i) == 1
+        ind = i[1]
+        return (string(temp2[ind,:Variable]), temp2[ind,:Database])
+      else
+        println(name, " could have several values, select one of the below\n")
+        println(temp2)
+        error("Variable not found")
+      end
     else
-      println(name, "\n")
-      println(temp)
-      return (temp)
+      temp = find_var(name, vars)
+      m = nrow(temp)
+      if m == 1
+        return (temp.Variable[1], temp.Database[1])
+      elseif m == 0
+        println(name, " not found in vars, perhaps your variable is in the list below\n")
+        temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(name)))
+        println(vars[temp2,[:Variable, :Database]])
+        error("Variable not found")
+        return (vars[temp2,[:Variable, :Database]])
+      elseif unique(temp, [:Variable, :Dimensions]) == 1
+        print("Combining ", nrow(temp), "variables")
+        return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
+      else
+        println(name, "\n")
+        println(temp)
+        return (temp)
+      end
     end
   end
 end
@@ -466,12 +471,20 @@ function diff_fast(name::String, loc1, loc2;
   if typeof(loc1) == Loc_j
     sets = ReadSets(loc1.HDF5_path, string(dbname1,"/", vname1))
     arr1 = ReadDisk(loc1.HDF5_path, string(dbname1,"/", vname1))
+    if :Unit ∈ keys(sets)
+      UnCode = ReadDisk(loc1.HDF5_path, "EGInput/UnCode")
+      sets.Unit[:] = UnCode[:]
+    end
   elseif typeof(loc1) == Loc_p
     arr1 = P.data(joinpath(loc1.DATA_FOLDER,string(dbname1,".dba")), vname1)
   end
   if typeof(loc2) == Loc_j
     sets = ReadSets(loc2.HDF5_path, string(dbname2,"/", vname2))
     arr2 = ReadDisk(loc2.HDF5_path, string(dbname2,"/", vname2))
+    if :Unit ∈ keys(sets)
+      UnCode = ReadDisk(loc2.HDF5_path, "EGInput/UnCode")
+      sets.Unit[:] = UnCode[:]
+    end
   else
     arr2 = P.data(joinpath(loc2.DATA_FOLDER,string(dbname2,".dba")), vname1)
   end
@@ -756,7 +769,7 @@ result = subset_dataframe(df, Dict(
 result = subset_dataframe(df, Dict("Year" => 2022), drop_filtered_cols=true)
 ```
 """
-function subset_dataframe!(df::DataFrame, filters::Dict{<:Any,<:Any}; drop_filtered_cols::Bool=false)
+function subset_dataframe(df::DataFrame, filters::Dict{<:Any,<:Any}; drop_filtered_cols::Bool=false)
   # Check if the DataFrame is empty
   isempty(df) && return df
   

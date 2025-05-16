@@ -29,8 +29,156 @@ HDPDP = J.diff("HDPDP", loc1, loc2)
 Node = M.ReadDisk(loc2.HDF5_path, "EInput/Node")
 Canada_Nodes = Node[1:14]
 @rsubset! HDPDP :Node ∈ Canada_Nodes
+dimension_filters[:Node] = Canada_Nodes
+dimension_filters[:Area] = Canada
 @rsubset! HDPDP :Spruce != 0 && :Tanoak != 0
 J.plot_diff(HDPDP; dim="Node", num=10, title="HDPDP diffs by Node")
+
+EuFPol = J.diff("EuFPol", loc1, loc2)
+@rsubset! EuFPol :Diff != 0 
+@rsubset! EuFPol :Area ∈ Canada
+J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
+
+@rsubset! EuFPol :ECC == "UtilityGen"
+J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll")
+@rsubset! EuFPol :Poll == "CO2"
+
+push!(dimension_filters, :Year => [string.(2018:2019); "2040"])
+push!(dimension_filters, :Unit => "QC00016200101")
+push!(dimension_filters, :Unit => "QC_Endo040208")
+pop!(dimension_filters, :Year)
+UnAVCMonth = J.diff_fast("UnAVCMonth", loc1, loc2; dimension_filters, sec = 'E')
+sets = M.ReadSets(loc2.HDF5_path, "EGOutput/UnAVCMonth")
+findall(sets.Unit == "QC_Endo040208")
+UnCode = M.ReadDisk(loc2.HDF5_path, "EGInput/UnCode")
+findall(UnCode .== "QC_Endo040208")
+M.WriteDisk(loc2.HDF5_path, "EGOutput/Unit", UnCode)
+
+J.plot_diff(UnAVCMonth; dim="Month", num=10, title="UnAVCMonth diffs by Month")
+J.plot_sets(UnAVCMonth; dim="Month", num=10, title="UnAVCMonth diffs by Month")
+# UnAVCMonth[unit,month] = UnFP[unit,month]*UnHRt[unit]/1000+
+#   UnUOMC[unit]*InflationUnit[unit]+UnPoTR[unit]+UnPoTRExo[unit]*InflationUnit[unit]
+UnFP = J.diff_fast("UnFP", loc1, loc2; dimension_filters, sec = 'E')
+UnHRt = J.diff_fast("UnHRt", loc1, loc2; dimension_filters, sec = 'E')
+UnUOMC = J.diff_fast("UnUOMC", loc1, loc2; dimension_filters, sec = 'E')
+InflationUnit = J.diff_fast("InflationUnit", loc1, loc2; dimension_filters, sec = 'E')
+UnPoTR = J.diff_fast("UnPoTR", loc1, loc2; dimension_filters, sec = 'E')
+UnPoTRExo = J.diff_fast("UnPoTRExo", loc1, loc2; dimension_filters, sec = 'E')
+
+findall(UnCode .== "QC06100000050")
+push!(dimension_filters, :Unit => "QC06100000050")
+push!(dimension_filters, :Year => string.(2023:2024))
+push!(dimension_filters, :Poll => "CO2")
+# UnPoTR is the issue
+# UnPoTR[unit] = sum(UnPoTxR[unit,fuelep,poll]*UnFlFr[unit,fuelep] for poll in Polls, fuelep in FuelEPs)-
+#   sum(UnOffValue[unit,poll] for poll in Polls)
+UnOffValue = J.diff_fast("UnOffValue", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset UnOffValue abs(:Diff) .>= 1e-6
+UnFlFr = J.diff_fast("UnFlFr", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset UnFlFr :Tanoak .>= 1e-6
+UnPoTxR = J.diff_fast("UnPoTxR", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset UnPoTxR abs(:Diff) .>= 1e-6 :Year == 2024 :Unit == "QC06100000050"
+sort(UnPoTxR, :Diff)
+# UnPoTxR is the issue
+UnPoTAv = J.diff_fast("UnPoTAv", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset! UnPoTAv abs(:Diff) .>= 1e-6
+sort(UnPoTAv, :Diff)
+
+#     UnPoTAv[unit,fuelep,poll] = (ETAPr[market]*(UnPOCNet[unit,fuelep,poll]*UnHRt[unit]*PolConv[poll]-
+#      UnGP[unit,fuelep,poll]*1e6)*ExchangeRateUnit[unit]/1e9)*UnCoverage[unit,poll]
+ETAPr = J.diff_fast("ETAPr", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset ETAPr abs(:Diff) >= 1e-4
+findall(UnCode == "QC_Endo040208")
+
+# UnCover = maximum(UnCoverage[unit,poll] for poll in polls)
+# if (AreaMarket[area,market] == 1) && (ECCMarket[ecc,market] == 1) && (UnCover > 0)
+UnCoverage = J.diff_fast("UnCoverage", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset! UnCoverage :Spruce != 0 
+CalibResT = J.Loc_j(vars_j, "\\\\Silver\\c\\2020CanadaTanoak\\2020Model\\CalibRes\\database.hdf5", "CalibResT")
+UnCoverageCR = J.diff_fast("UnCoverage", loc1, CalibResT; dimension_filters, sec = 'E')
+
+
+push!(dimension_filters, :Area => "QC")
+AreaMarket = J.diff_fast("AreaMarket", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset AreaMarket :Spruce != 0
+push!(dimension_filters, :ECC => "UtilityGen")
+ECCMarket = J.diff_fast("ECCMarket", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset ECCMarket :Spruce != 0 
+UnF1 = J.diff_fast("UnF1", loc1, loc2; dimension_filters, sec = 'E')
+M.ReadDisk(loc2.HDF5_path, "EGInput/UnF1")
+push!(dimension_filters, :Market => "Market200")
+PollMarket = J.diff_fast("PollMarket", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset PollMarket :Spruce != 0
+# UnGC is the issue.
+
+# UnFP is the issue
+# UnFP(U,Month)=sum(FuelEP)(UnFlFrPrior(U,FuelEP)*ECFPMonth(FuelEP,Month,Area))
+push!(dimension_filters, :Year => string.(2022:2023))
+UnFlFr = J.diff_fast("UnFlFr", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset UnFlFr abs(:Diff) >= 0.01
+push!(dimension_filters, :Year => string.(2023:2024))
+ECFPMonth = J.diff_fast("ECFPMonth", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset ECFPMonth abs(:Diff) >= 0.01
+
+# UnFlFrPrior (i.e. 2023 values cause issues for 2024) is the issue. Tanoak has a lot of near 0 values.
+
+# julia> @rsubset UnFlFr abs(:Diff) >= 0.01
+# 2×6 DataFrame
+#  Row │ Unit           FuelEP      Year   Spruce   Tanoak       Diff    
+#      │ String         String      Int64  Float64  Float64      Float64
+# ─────┼─────────────────────────────────────────────────────────────────
+#    1 │ QC00016200101  NaturalGas   2023    0.963  1.0           -0.037
+#    2 │ QC00016200101  RNG          2023    0.037  2.61632e-79    0.037
+
+#   @. @finite_math UnFlFr = UnFlFrPrior+(UnFlFrMarginal-UnFlFrPrior)/UnFlFrTime
+UnFlFrMarginal = J.diff_fast("UnFlFrMarginal", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset UnFlFrMarginal abs(:Diff) >= 0.01
+UnFlFrMSF = J.diff_fast("UnFlFrMSF", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset UnFlFrMSF abs(:Diff) >= 0.01
+push!(dimension_filters, :Fuel => ["NaturalGas", "RNG"])
+push!(dimension_filters, :FuelEP => ["NaturalGas", "RNG"])
+FuelLimit = J.diff_fast("FuelLimit", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset FuelLimit :Diff != 0
+UnFlFrMax = J.diff_fast("UnFlFrMax", loc1, loc2; dimension_filters, sec = 'E')
+UnFlFrMin = J.diff_fast("UnFlFrMin", loc1, loc2; dimension_filters, sec = 'E')
+# Spruce is converting over to RNG, but Tanoak is not.
+
+################################################################################    
+push!(dimension_filters, :Unit => "QC00013500201")
+pop!(dimension_filters, :Year)
+UnAFC = J.diff_fast("UnAFC", loc1, loc2; dimension_filters, sec = 'E')
+@rsubset UnAFC abs(:Diff) >= 0.01
+push!(dimension_filters, :Year => string.(2014:2015))
+
+  @finite_math UnAFC[unit] = (UnNA[unit]*CCR[plant,area]+UnSLDPR[unit]+UnRCOMPrior[unit])/
+      UnGC[unit]*1000+UnUFOMC[unit]*InflationUnit[unit]
+UnNA = J.diff_fast("UnNA", loc1, loc2; dimension_filters, sec = 'E')
+UnSLDPR = J.diff_fast("UnSLDPR", loc1, loc2; dimension_filters, sec = 'E')
+UnRCOM = J.diff_fast("UnRCOM", loc1, loc2; dimension_filters, sec = 'E')
+UnGC = J.diff_fast("UnGC", loc1, loc2; dimension_filters, sec = 'E')
+UnPlant = M.ReadDisk(loc2.HDF5_path, "EGInput/UnPlant")
+UnCode = M.ReadDisk(loc2.HDF5_path, "EGInput/UnCode")
+UnPlant[findall(UnCode .== "QC_Endo040208")]
+dimension_filters[:Plant] = "OGCT"
+CCR = J.diff_fast("CCR", loc1, loc2; dimension_filters, sec = 'E')
+
+
+
+UnGCCR = J.diff_fast("UnGCCR", loc1, loc2; dimension_filters, sec = 'E')
+xUnGCCR = J.diff_fast("xUnGCCR", loc1, loc2; dimension_filters, sec = 'E')
+xUnGC = J.diff_fast("xUnGC", loc1, loc2; dimension_filters, sec = 'E')
+vUnGC = J.diff_fast("vUnGC", loc1, loc2; dimension_filters, sec = 'E')
+UnRetire = J.diff_fast("UnRetire", loc1, loc2; dimension_filters, sec = 'E')
+################################################################################    
+
+# UnAVCMonth[unit,month] = StorageUnitCosts[area]+UnUOMC[unit]*
+#   InflationUnit[unit]+UnPoTR[unit]+UnPoTRExo[unit]*InflationUnit[unit]
+
+dimfilt = copy(dimension_filters)
+push!(dimfilt, :Unit => "QC_Kuujjuara_ST")
+UnAVCMonth_storage = J.diff_fast("UnAVCMonth", loc1, loc2; dimension_filters = dimfilt, sec = 'E')
+
+
 
 push!(dimension_filters, :Node => "QC")
 J.subset_dataframe!(HDPDP, dimension_filters) # Not working yet
@@ -47,11 +195,11 @@ xPkLoad = J.diff_fast("xPkLoad", loc1, loc2; dimension_filters, sec = 'E')
 PkLoad = J.diff_fast("PkLoad", loc1, loc2; dimension_filters, sec = 'E')
 @rsubset PkLoad abs(:Diff) >= 0.01 :Area == "QC"
 
-SLDC[hour,day,month,area] = sum(LDCECC[ecc,hour,day,month,area] for ecc in ECCs)/TDEF[electric,area]
+# SLDC[hour,day,month,area] = sum(LDCECC[ecc,hour,day,month,area] for ecc in ECCs)/TDEF[electric,area]
 push!(dimension_filters, :Area => "QC")
 SLDC = J.diff_fast("SLDC", loc1, loc2; dimension_filters, sec = 'E')
-@rsubset SLDC :Diff != 0 :Year ∈ [1986,2002,2003]
-push!(dimension_filters, :Year => ["1986","2002","2003"])
+@rsubset SLDC abs(:Diff) >= 0.1 
+push!(dimension_filters, :Year => string.(2021:2040))
 push!(dimension_filters, :Month => "Winter")
 
 LDCECC = J.diff_fast("LDCECC", loc1, loc2; dimension_filters, sec = 'E')
@@ -60,7 +208,7 @@ J.plot_diff(LDCECC; dim="ECC", num=10, title="LDCECC diffs by ECC")
 push!(dimension_filters, :ECC => "Aluminum")
 push!(dimension_filters, :EC => "Aluminum")
 
-SaEC[ecc,area]*CLSF[class,hour,average,month,area]/8760*1000
+# SaEC[ecc,area]*CLSF[class,hour,average,month,area]/8760*1000
 SaEC = J.diff_fast("SaEC", loc1, loc2; dimension_filters, sec = 'E')
 
 # ElecDmd[ecc,area] = sum(ESales[enduse,ec,area] for enduse in Enduses)
@@ -69,10 +217,40 @@ ESales = J.diff_fast("ESales", loc1, loc2; dimension_filters, sec = 'I')
 CgEC = J.diff_fast("CgEC", loc1, loc2; dimension_filters, sec = 'I')
 PSoECC = J.diff_fast("PSoECC", loc1, loc2; dimension_filters, sec = 'I')
 
+# fuel = Select(Fuel,"Electric")
+# ESales[enduse,ec,area] = sum(Dmd[enduse,tech,ec,area]*DmFrac[enduse,fuel,tech,ec,area] for tech in Techs)/EEConv*1e6
+push!(dimension_filters, :Fuel => "Electric")
+push!(dimension_filters, :Year => ["2040"])
+Dmd = J.diff_fast("Dmd", loc1, loc2; dimension_filters, sec = 'I')
+@rsubset Dmd abs(:Diff) >= 1e-6
+@rsubset Dmd :Tech == "Storage"
+DmFrac = J.diff_fast("DmFrac", loc1, loc2; dimension_filters, sec = 'I')
+@rsubset DmFrac abs(:Diff) >= 1e-6
+
+Storage = Dict{Symbol,Any}()
+Storage[:Fuel] = "Electric"
+Storage[:Year] = "2040"
+Storage[:Tech] = "Storage"
+Storage[:ECC] = "Aluminum"
+Dmd_Aluminum = J.diff_fast("Dmd", loc1, loc2; dimension_filters = Storage, sec = 'I')
+sum(Dmd_Aluminum.Diff)
+sum(Dmd_Aluminum.Spruce)
+
+pop!(Storage, :ECC)
+push!(Storage, :Area => "QC")
+Dmd_QC = J.diff_fast("Dmd", loc1, loc2; dimension_filters = Storage, sec = 'I')
+sum(Dmd_QC.Diff)
+sum(Dmd_QC.Spruce)
+
+# DmFrac is fine except for Storage, but that's not driving an issue. So it's Dmd that the problem. 
+
+
+
+# CgEC was looking back, but I fixed that. 
 #     CgEC[ecc,area] = sum(CgGen[fuel,ecc,area] for fuel in Fuels)
 CgGen = J.diff_fast("CgGen", loc1, loc2; dimension_filters, sec = 'I')
-@rsubset CgGen abs(:Diff) > 0.01
-
+@rsubset! CgGen abs(:Diff) > 0.01
+sort!(CgGen, [:Diff], rev=true)
 
 Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters, sec = 'E')
 sec = 'T'
@@ -186,7 +364,6 @@ df2020[:ECC] = "Passenger"
 SPC = J.diff_fast("PC", loc1, loc2; dimension_filters = df2020, sec) # didn't work
 SPC0 = J.diff_fast("PC", loc1, loc2; dimension_filters = dfFirst, sec='M') # didn't work 
 SPop = J.diff_fast("Pop", loc1, loc2; dimension_filters = df2020, sec='M') # didn't work 
-SPop0 = J.diff_fast("Pop", loc1, loc2; dimension_filters = dfFirst, sec='M') # didn't work 
 dfFirst = copy(df2020)
 dfFirst[:Year] = "1986"
 
