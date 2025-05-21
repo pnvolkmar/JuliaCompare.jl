@@ -1117,4 +1117,130 @@ function ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
   end
 end
 
+"""
+    add_pdiff(df::DataFrame)
+
+Add a percent difference (PDiff) column to a DataFrame with Spruce and Tanoak columns.
+Sets PDiff to zero when Diff is zero.
+
+# Arguments
+- `df`: DataFrame with columns Spruce, Tanoak, and optionally Diff
+
+# Returns
+- The modified DataFrame with a new PDiff column added
+
+# Example
+```julia
+# Assumes Dmd has Spruce, Tanoak, and Diff columns
+add_pdiff(Dmd)
+```
+"""
+function add_pdiff(df)
+    # Check if required columns exist
+    required_cols = [:Spruce, :Tanoak]
+    
+    for col in required_cols
+        if !(col in propertynames(df))
+            error("Column '$col' not found in DataFrame")
+        end
+    end
+    
+    # Create a copy
+    result = copy(df)
+    
+    # Check if Diff column exists
+    has_diff = :Diff in propertynames(df)
+    
+    # Calculate PDiff
+    if has_diff
+        # Calculate raw percent differences
+        raw_pdiff = (df.Spruce .- df.Tanoak) ./ df.Tanoak .* 100.0
+        
+        # Round to 2 decimal places
+        raw_pdiff = round.(raw_pdiff, digits=2)
+        
+        # Apply the rule: if Diff is zero, PDiff is zero
+        result.PDiff = [isapprox(diff, 0, atol=1e-10) ? 0.0 : pdiff 
+                      for (diff, pdiff) in zip(df.Diff, raw_pdiff)]
+    else
+        # Just calculate percent difference without the zero check
+        result.PDiff = round.((df.Spruce .- df.Tanoak) ./ df.Tanoak .* 100.0, digits=2)
+    end
+    
+    return result
+end
+
+"""
+    add_pdiff!(df::DataFrame)
+
+In-place version that adds a PDiff column directly to the input DataFrame.
+"""
+function add_pdiff!(df)
+    # Check if required columns exist
+    required_cols = [:Spruce, :Tanoak]
+    
+    for col in required_cols
+        if !(col in propertynames(df))
+            error("Column '$col' not found in DataFrame")
+        end
+    end
+    
+    # Check if Diff column exists
+    has_diff = :Diff in propertynames(df)
+    
+    # Calculate PDiff
+    if has_diff
+        # Calculate raw percent differences
+        raw_pdiff = (df.Spruce .- df.Tanoak) ./ df.Tanoak .* 100.0
+        
+        # Round to 2 decimal places
+        raw_pdiff = round.(raw_pdiff, digits=2)
+        
+        # Apply the rule: if Diff is zero, PDiff is zero
+        df.PDiff = [isapprox(diff, 0, atol=1e-10) ? 0.0 : pdiff 
+                  for (diff, pdiff) in zip(df.Diff, raw_pdiff)]
+    else
+        # Just calculate percent difference without the zero check
+        df.PDiff = round.((df.Spruce .- df.Tanoak) ./ df.Tanoak .* 100.0, digits=2)
+    end
+    
+    return df
+end
+
+# Direct access versions using column properties
+"""
+    direct_add_pdiff!(df)
+
+A direct implementation that accesses columns directly by property.
+May help avoid column lookup issues.
+"""
+function direct_add_pdiff!(df)
+    # Calculate percent differences
+    pdiff_values = Vector{Float64}(undef, size(df, 1))
+    
+    for i in 1:size(df, 1)
+        spruce_val = df[i, :Spruce]
+        tanoak_val = df[i, :Tanoak]
+        
+        # Calculate raw percent difference
+        raw_pdiff = (spruce_val - tanoak_val) / tanoak_val * 100.0
+        
+        # Round to 2 decimal places
+        raw_pdiff = round(raw_pdiff, digits=2)
+        
+        # Check if Diff is zero (if Diff column exists)
+        if :Diff in propertynames(df)
+            diff_val = df[i, :Diff]
+            pdiff_values[i] = isapprox(diff_val, 0, atol=1e-10) ? 0.0 : raw_pdiff
+        else
+            pdiff_values[i] = raw_pdiff
+        end
+    end
+    
+    # Add the column
+    df.PDiff = pdiff_values
+    
+    return df
+end
+
 end # module JuliaCompare
