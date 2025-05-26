@@ -26,7 +26,9 @@ HDF5_path = joinpath(DATA_FOLDER2, "database.hdf5")
 vars = J.list_vars(CODE_FOLDER, DATA_FOLDER1, db_files);
 vars_j = J.list_vars(HDF5_path)
 loc1 = J.Loc_p(vars, DATA_FOLDER1, "Spruce");
+spr_base = J.Loc_p(vars, "\\\\Pink\\c\\2020CanadaSpruce\\2020Model\\Base", "Spr_Base");
 loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
+tan_base = J.Loc_j(vars_j, "\\\\Pink\\c\\2020CanadaTanoak\\2020Model\\Base\\database.hdf5", "Tan_Base");
 
 ################################################################################
 # Initialize variables for analysis ############################################
@@ -50,75 +52,94 @@ EuFPol_g.PDiff = EuFPol_g.Diff ./ EuFPol_g.Spruce
 
 # Almost all Gasoline and Diesel
 J.plot_diff(EuFPol; dim="FuelEP", num=10, title="EuFPol diffs by FuelEP") 
-push!(dimension_filters, :FuelEP => "Gasoline")
-push!(dimension_filters, :ECC => "Passenger")
-push!(dimension_filters, :EC => "Passenger")
+push!(dimension_filters, :FuelEP => ["Gasoline", "Diesel"])
+push!(dimension_filters, :ECC => "CommercialOffRoad")
+push!(dimension_filters, :EC => "CommercialOffRoad")
 
-# CO2 mainly with trace COX
+# CO2 only
 @rsubset! EuFPol :Spruce != 0 && :Tanoak != 0
 J.plot_diff(EuFPol; dim="Poll", num=10, title="EuFPol diffs by Poll") 
 push!(dimension_filters, :Poll => "CO2")
-# ON, AB, BC are the biggest contributors, though many are present
+# ON, AB, BC, QC are the biggest contributors, though many are present
 J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by Area")
-push!(dimension_filters, :Area => "ON")
+push!(dimension_filters, :Area => "AB")
 
 
-Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters)
-s = 'T'
-Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters, s)
+Polute = J.diff_fast("Polute", loc1, loc2; dimension_filters, sec)
 J.plot_diff(Polute; dim="Tech", num=10, title="Polute diffs by Tech")
-push!(dimension_filters, :Tech => ["LDVGasoline"])
-push!(dimension_filters, :Year => "2030")
+push!(dimension_filters, :Tech => ["OffRoad"])
+@rsubset! Polute :Diff != 0 :Year > 2020
+@by(Polute, :Year, :Diff = sum(:Diff))
+push!(dimension_filters, :Year => ["2022", "2023", "2024", "2029", "2030"])
 
-POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, s)
+POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, sec)
 i = findall(vars.Variable .== "POCA" .&& first.(vars.Database) .== 'T')
 i = i[1]
 vars[i,:Database] = "TOutput2"
-push!(dimension_filters, :EC => "Passenger")
-POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, s)
+POCA = J.diff_fast("POCA", loc1, loc2; dimension_filters, sec)
 @rsubset POCA :Diff != 0
 
-DmdFEPTech = J.diff_fast("DmdFEPTech", loc1, loc2; dimension_filters, s)
+DmdFEPTech = J.diff_fast("DmdFEPTech", loc1, loc2; dimension_filters, sec)
 @rsubset DmdFEPTech !isapprox(:Diff, 0)
 
-DmdFuelTech = J.diff_fast("DmdFuelTech", loc1, loc2; dimension_filters, s)
-dimension_filters[:FuelEP] = "Gasoline"
-dimension_filters[:Tech] = "LDVGasoline"
-push!(dimension_filters, :Fuel => "Gasoline")
-DmdFuelTech = J.diff_fast("DmdFuelTech", loc1, loc2; dimension_filters, s)
+DmFrac = J.diff_fast("DmFrac", loc1, loc2; dimension_filters, sec)
+@rsubset! DmFrac :Diff != 0
+J.add_pdiff!(DmFrac)
+@rsubset! DmFrac :PDiff != 0
+@rsubset DmFrac :Fuel == "Ethanol"
+Dmd = J.diff_fast("Dmd", loc1, loc2; dimension_filters, sec)
+push!(dimension_filters, :Fuel => "Ethanol", :FuelEP => "Ethanol")
+# DmFrac's Ethanol is causing the issue
 
-DmFrac = J.diff_fast("DmFrac", loc1, loc2; dimension_filters, s)
-Dmd = J.diff_fast("Dmd", loc1, loc2; dimension_filters, s)
+DmFracMSM0 = J.diff_fast("DmFracMSM0", loc1, loc2; dimension_filters, sec)
+DmFracMSF = J.diff_fast("DmFracMSF", loc1, loc2; dimension_filters, sec)
+J.add_pdiff(DmFracMSF)
+DmFracMarginal = J.diff_fast("DmFracMarginal", loc1, loc2; dimension_filters, sec)
+J.add_pdiff(DmFracMarginal)
+DmFracMin = J.diff_fast("DmFracMin", loc1, loc2; dimension_filters, sec)
+J.add_pdiff(DmFracMin)
+DmFracMax = J.diff_fast("DmFracMax", loc1, loc2; dimension_filters, sec)
+J.add_pdiff(DmFracMax)
+DmFracMax_b = J.diff_fast("DmFracMax", spr_base, tan_base; dimension_filters, sec)
+J.add_pdiff(DmFracMax)
 
-EEImpact = J.diff_fast("EEImpact", loc1, loc2; dimension_filters, s)
-EESat = J.diff_fast("EESat", loc1, loc2; dimension_filters, s)
-xDmd = J.diff_fast("xDmd", loc1, loc2; dimension_filters, s)
-DSMEU = J.diff_fast("DSMEU", loc1, loc2; dimension_filters, s)
-SqDmd = J.diff_fast("SqDmd", loc1, loc2; dimension_filters, s)
-SqEUTechMap = J.diff_fast("SqEUTechMap", loc1, loc2; dimension_filters, s)
-RPEI = J.diff_fast("RPEI", loc1, loc2; dimension_filters, s)
-CERSM = J.diff_fast("CERSM", loc1, loc2; dimension_filters, s)
-TSLoad = J.diff_fast("TSLoad", loc1, loc2; dimension_filters, s)
-UMS = J.diff_fast("UMS", loc1, loc2; dimension_filters, s)
-DDay = J.diff_fast("DDay", loc1, loc2; dimension_filters, s)
-CUF = J.diff_fast("CUF", loc1, loc2; dimension_filters, s)
-WCUF = J.diff_fast("WCUF", loc1, loc2; dimension_filters, s)
-DDCoefficient = J.diff_fast("DDCoefficient", loc1, loc2; dimension_filters, s)
-DDayNorm = J.diff_fast("DDayNorm", loc1, loc2; dimension_filters, s)
+tech_check = copy(dimension_filters)
+push!(tech_check, :Year => string.(2022:2030))
+DmFracMax
+sets = M.ReadSets(loc2.HDF5_path,"TOutput/DmFrac")
+sets.Tech
+DmFracMax = J.diff_fast("DmFracMax", loc1, loc2; dimension_filters=tech_check, sec)
+J.add_pdiff(DmFracMax)
+
+EEImpact = J.diff_fast("EEImpact", loc1, loc2; dimension_filters, sec)
+EESat = J.diff_fast("EESat", loc1, loc2; dimension_filters, sec)
+xDmd = J.diff_fast("xDmd", loc1, loc2; dimension_filters, sec)
+DSMEU = J.diff_fast("DSMEU", loc1, loc2; dimension_filters, sec)
+SqDmd = J.diff_fast("SqDmd", loc1, loc2; dimension_filters, sec)
+SqEUTechMap = J.diff_fast("SqEUTechMap", loc1, loc2; dimension_filters, sec)
+RPEI = J.diff_fast("RPEI", loc1, loc2; dimension_filters, sec)
+CERSM = J.diff_fast("CERSM", loc1, loc2; dimension_filters, sec)
+TSLoad = J.diff_fast("TSLoad", loc1, loc2; dimension_filters, sec)
+UMS = J.diff_fast("UMS", loc1, loc2; dimension_filters, sec)
+DDay = J.diff_fast("DDay", loc1, loc2; dimension_filters, sec)
+CUF = J.diff_fast("CUF", loc1, loc2; dimension_filters, sec)
+WCUF = J.diff_fast("WCUF", loc1, loc2; dimension_filters, sec)
+DDCoefficient = J.diff_fast("DDCoefficient", loc1, loc2; dimension_filters, sec)
+DDayNorm = J.diff_fast("DDayNorm", loc1, loc2; dimension_filters, sec)
 
 
-DER = J.diff_fast("DER", loc1, loc2; dimension_filters, s)
-DERRRExo = J.diff_fast("DERRRExo", loc1, loc2; dimension_filters, s)
-PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, s)
-PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, s)
-DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, s)
+DER = J.diff_fast("DER", loc1, loc2; dimension_filters, sec)
+DERRRExo = J.diff_fast("DERRRExo", loc1, loc2; dimension_filters, sec)
+PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, sec)
+PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, sec)
+DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, sec)
 i = findall(vars.Variable .∈ Ref(["DERV", "DERAV"]) .&& first.(vars.Database) .== 'T')
 i = i[1]
 vars[i,:Database] = "TOutput2"
 vars[i,:]
-DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, s)
-StockAdjustment = J.diff_fast("StockAdjustment", loc1, loc2; dimension_filters, s)
-DERAV = J.diff_fast("DERAV", loc1, loc2; dimension_filters, s)
+DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, sec)
+StockAdjustment = J.diff_fast("StockAdjustment", loc1, loc2; dimension_filters, sec)
+DERAV = J.diff_fast("DERAV", loc1, loc2; dimension_filters, sec)
 dimension_filters[:Year] = string.(2020:2040)
 DERA   = J.diff_fast("DERA", loc1, loc2; dimension_filters, sec = 'T')
 DERAPC = J.diff_fast("DERAPC", loc1, loc2; dimension_filters, sec = 'T')
@@ -180,10 +201,10 @@ SPop0 = J.diff_fast("Pop", loc1, loc2; dimension_filters = dfFirst, sec='M') # d
 dfFirst = copy(df2020)
 dfFirst[:Year] = "1986"
 
-xMMSF = J.diff_fast("xMMSF", loc1, loc2; dimension_filters = df2020, s) # didn't work
-CMMSF = J.diff_fast("CMM", loc1, loc2; dimension_filters = df2020, s) # didn't work
+xMMSF = J.diff_fast("xMMSF", loc1, loc2; dimension_filters = df2020, sec) # didn't work
+CMMSF = J.diff_fast("CMM", loc1, loc2; dimension_filters = df2020, sec) # didn't work
 
-MMSM0 = J.diff_fast("MMSM0", loc1, loc2; dimension_filters = df2020, s) # bad
+MMSM0 = J.diff_fast("MMSM0", loc1, loc2; dimension_filters = df2020, sec) # bad
 @rsubset MMSM0 abs(:Diff) > 1e-5
 
 dimension_filters[:Tech] = "BusGasoline"
