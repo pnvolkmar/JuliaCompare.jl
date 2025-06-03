@@ -1,15 +1,15 @@
 using Revise
 import JuliaCompare as J
 import PromulaDBA as P
-import SmallModel as M 
+import SmallModel as M
 import JuliaCompare: db_files, Canada
 using CSV, DataFrames, DataFramesMeta
 
 ################################################################################
 # Inputs for file locations ####################################################
 ################################################################################
-BASE_FOLDER = raw"\\Pink\c\2020CanadaSpruce"
-BASE_FOLDER2 = raw"\\Pink\c\2020CanadaTanoak"
+BASE_FOLDER = raw"\\Silver\c\2020CanadaSpruce"
+BASE_FOLDER2 = raw"\\Silver\c\2020CanadaTanoak"
 SCENARIO1 = "Ref24"
 SCENARIO2 = "Ref24"
 ################################################################################
@@ -33,10 +33,23 @@ loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
 ################################################################################
 sec = 'E'
 dimension_filters = Dict{Symbol,Any}()
-push!(dimension_filters, :Area => ["NS", "ON"])
-push!(dimension_filters, :Node => ["NS", "ON"])
-push!(dimension_filters, :ECC => "UtilityGen")
 
+CalibLTime = J.diff_fast("CalibLTime", loc1, loc2; dimension_filters, sec)
+maximum(CalibLTime.Spruce)
+maximum(CalibLTime.Tanoak)
+EGCalSw = J.diff_fast("EGCalSw", loc1, loc2; dimension_filters, sec)
+@rsubset EGCalSw :Spruce == 1
+push!(dimension_filters, :Area => ["ON"])
+push!(dimension_filters, :Node => ["ON"])
+push!(dimension_filters, :ECC => "UtilityGen")
+push!(dimension_filters, :Fuel => "NaturalGas")
+push!(dimension_filters, :FuelEP => "NaturalGas")
+push!(dimension_filters, :Year => string.(2021:2025))
+push!(dimension_filters, :Poll => "CO2")
+push!(dimension_filters, :Unit => "ON_New_021")
+
+zoom = copy(dimension_filters)
+push!(dimension_filters, :Year => "2024", :Month => "Summer", :TimeP => "TimeP6")
 
 ################################################################################
 # Analysis of variables ########################################################
@@ -45,21 +58,107 @@ TotPol = J.diff_fast("TotPol", loc1, loc2; dimension_filters, sec)
 J.plot_diff(TotPol; dim="Poll", num=10, title="TotPol diffs by Poll")
 J.plot_diff(TotPol; dim="Area", num=10, title="TotPol diffs by Area")
 
-push!(dimension_filters, :Poll => "CO2")
 
 EuFPol = J.diff_fast("EuFPol", loc1, loc2; dimension_filters, sec)
-@rsubset! EuFPol abs(:Diff) > 1e-46
+@rsubset! EuFPol abs(:Diff) > 1e-46 :Year >= 2020
 J.plot_diff(EuFPol; dim="Area", num=2, title="EuFPol diffs by Area")
+J.plot_diff(EuFPol; dim="FuelEP", num=2, title="EuFPol diffs by FuelEP")
+@by EuFPol [:Area, :Year] :Diff = sum(:Diff)
+J.add_pdiff!(EuFPol)
 
+i = findall(vars.Variable .== "UnPolGross")
+i = i[1]
+vars[i,:Database] = "EGOutput3"
+pop!(dimension_filters, :Unit)
+UnPolGross = J.diff_fast("UnPolGross", loc1, loc2; dimension_filters, sec)
+@rsubset! UnPolGross :Unit != "Null"
+UnArea = M.ReadDisk(loc2.HDF5_path, "EGInput/UnArea")
+UnCode = M.ReadDisk(loc2.HDF5_path, "EGInput/UnCode")
+UnArea = DataFrame(Unit = UnCode, UnArea = UnArea)
+@rsubset! UnArea :Unit != "Null"
+UnPlant = M.ReadDisk(loc2.HDF5_path, "EGInput/UnPlant")
+UnPlant = DataFrame(Unit = UnCode, UnPlant = UnPlant)
+@rsubset! UnPlant :Unit != "Null"
+
+sort(UnPolGross, :Diff)
+
+UnEG = J.diff_fast("UnEG", loc1, loc2; dimension_filters, sec) # bad
+@rsubset! UnEG :Unit != "Null"
+leftjoin!(UnEG, UnArea, on = :Unit)
+leftjoin!(UnEG, UnPlant, on = :Unit)
+@rsubset! UnEG :UnArea == "ON" abs(:Diff) >= 1e-5
+sort!(UnEG, :Diff)
+J.add_pdiff!(UnEG)
+
+UnGC = J.diff_fast("UnGC", loc1, loc2; dimension_filters, sec) # bad
+@rsubset! UnGC :Unit != "Null"
+leftjoin!(UnGC, UnArea, on = :Unit)
+leftjoin!(UnGC, UnPlant, on = :Unit)
+@rsubset! UnGC :UnArea == "ON" abs(:Diff) >= 1e-5
+sort!(UnGC, :Diff)
+J.add_pdiff!(UnGC)
+
+UnEAV = J.diff_fast("UnEAV", loc1, loc2; dimension_filters, sec) # bad
+@rsubset! UnEAV :Unit != "Null"
+leftjoin!(UnEAV, UnArea, on = :Unit)
+leftjoin!(UnEAV, UnPlant, on = :Unit)
+@rsubset! UnEAV :UnArea == "ON" :Spruce != 0 && :Tanoak != 0
+sort!(UnEAV, :Diff)
+J.add_pdiff!(UnEAV)
+
+function get_me(Str)
+  df = J.diff_fast(Str, loc1, loc2; dimension_filters, sec) # bad
+  @rsubset! df :Unit != "Null"
+  leftjoin!(df, UnArea, on = :Unit)
+  leftjoin!(df, UnPlant, on = :Unit)
+  @rsubset! df :UnArea == "ON" abs(:Diff) >= 1e-5
+  sort!(df, :Diff)
+  J.add_pdiff!(df)
+  return df
+end
+
+
+#  UnEAV[unit,timep,month] = UnGC[unit]*(1-UnOUREG[unit])*UnEAF[unit,month]*(1-UnOOR[unit])*HoursPerMonth[month]/1000
+UnOOR = get_me("UnOOR") # bad
+@by(UnOOR, [:UnPlant, :Year], :Diff = sum(:Diff)/length(:Diff))
+UnOR = get_me("UnOR") # good
+HDADPwithStorage = J.diff_fast("HDADPwithStorage", loc1, loc2; dimension_filters, sec)
+UnEG_slice
+@by(UnEG_slice, :Year, :Spruce = sum(:Spruce), :Tanoak = sum(:Tanoak), :Diff = sum(abs.(:Diff)))
+
+pop!(dimension_filters, :Node)
+LLVC = J.diff_fast("LLVC", loc1, loc2; dimension_filters, sec)
+@rsubset! LLVC abs(:Diff) >= 1e-6
+LLMax = J.diff_fast("LLMax", loc1, loc2; dimension_filters, sec)
+@rsubset! LLMax abs(:Diff) >= 1e-6
+
+
+
+# we're seeing the small numbers issue with UnPolGross
+# UnPolGross[unit,fuelep,poll] = UnDmd[unit,fuelep]*UnPOCA[unit,fuelep,poll]
+UnDmd = J.diff_fast("UnDmd", loc1, loc2; dimension_filters, sec) # bad
+UnPOCA = J.diff_fast("UnPOCA", loc1, loc2; dimension_filters, sec) # good
+#    UnDmd[unit,fuelep] = max(UnEGGross[unit]*UnHRt[unit]/1e6*UnFlFr[unit,fuelep],0)
+UnEGGross = J.diff_fast("UnEGGross", loc1, loc2; dimension_filters, sec) # bad
+UnHRt = J.diff_fast("UnHRt", loc1, loc2; dimension_filters, sec) # good
+UnFlFr = J.diff_fast("UnFlFr", loc1, loc2; dimension_filters, sec) # good
+#     @finite_math UnEGGross[unit] = UnEGA[unit]/(1-UnOUREG[unit])
+UnEGA = J.diff_fast("UnEGA", loc1, loc2; dimension_filters, sec) # bad
+UnOUREG = J.diff_fast("UnOUREG", loc1, loc2; dimension_filters, sec) # good
+UUnEGA = J.diff_fast("UUnEGA", loc1, loc2; dimension_filters, sec) # bad
+# UUnEGA[unit] = sum(UnEG[unit,timep,month]+UnStorCurtailed[unit,timep,month]
+#                    for month in Months, timep in TimePs)
+@rsubset UnEG abs(:Diff) >= 1e-5
+UnStorCurtailed = J.diff_fast("UnStorCurtailed", loc1, loc2; dimension_filters, sec) # good
+@rsubset UnStorCurtailed :Diff != 0
 
 HDPDP = J.diff_fast("HDPDP", loc1, loc2; dimension_filters, sec)
 @rsubset! HDPDP :Spruce != 0 && :Tanoak != 0
-J.plot_diff(HDPDP; dim="Node", num=10, title="HDPDP diffs by Node")
-
-push!(dimension_filters, :Node => "QC")
-J.subset_dataframe!(HDPDP, dimension_filters) # Not working yet
+J.plot_diff(HDPDP; dim="TimeP", num=10, title="HDPDP diffs by TimeP")
+J.add_pdiff!(HDPDP)
 
 PkLoad = J.diff_fast("PkLoad", loc1, loc2; dimension_filters, sec = 'E')
+J.add_pdiff!(PkLoad)
 J.plot_diff(PkLoad; dim="Area", num=10, title="PkLoad diffs by Area")
 PkLoad_yr = @by PkLoad [:Area, :Year] begin
   :Diff = sum(:Diff)
@@ -67,12 +166,14 @@ end
 @rsubset PkLoad_yr abs(:Diff) > 1 :Year > 2020
 # let's focus on ON
 push!(dimension_filters, :Node => "ON", :Area => "ON", :Year => string.(2020:2027))
-# SLDC[hour,day,month,area] = sum(LDCECC[ecc,hour,day,month,area] for ecc in ECCs)/TDEF[electric,area]
+# SLDC[hour,day,month,area] = sum(LDCECC[ecc,hour,day,month,area] for ecc in ECCs)
+# /TDEF[electric,area]
 SLDC = J.diff_fast("SLDC", loc1, loc2; dimension_filters, sec = 'E')
-
+J.add_pdiff(SLDC)
 pop!(dimension_filters, :ECC)
 LDCECC = J.diff_fast("LDCECC", loc1, loc2; dimension_filters, sec = 'E')
-@rsubset! LDCECC abs(:Diff) > 1
+J.add_pdiff!(LDCECC)
+@rsubset! LDCECC abs(:PDiff) > .01
 J.plot_diff(LDCECC; dim = "ECC", num = 10, title = "LDCECC diffs by ECC")
 TDEF = J.diff_fast("TDEF", loc1, loc2; dimension_filters, sec = 'E')
 @rsubset TDEF :Diff != 0
@@ -270,7 +371,7 @@ sum(DSt.PDiff) # 0
 PEE = J.diff_fast("PEE", loc1, loc2; dimension_filters, sec)
 @rsubset! PEE abs(:Diff) >= 1e-7
 J.add_pdiff!(PEE)
-sum(PEE.PDiff) # 
+sum(PEE.PDiff) #
 
 # EUPCAPC
   # EUPCAPC[enduse,tech,New,ec,area] = PCA[New,ecc,area]*MMSF[enduse,tech,ec,area]
@@ -278,7 +379,7 @@ sum(PEE.PDiff) #
 PCA = J.diff_fast("PCA", loc1, loc2; dimension_filters, sec)
 @rsubset! PCA abs(:Diff) >= 1e-7
 J.add_pdiff!(PCA)
-sum(PCA.PDiff) # 
+sum(PCA.PDiff) #
 
 # MMSF
 MMSF = J.diff_fast("MMSF", loc1, loc2; dimension_filters, sec)
@@ -310,7 +411,7 @@ sum(MCFU.PDiff) # 83
 MSMM = J.diff_fast("MSMM", loc1, loc2; dimension_filters, sec)
 @rsubset! MSMM abs(:Diff) != 0
 
-    # @finite_math MCFU[enduse,tech,ec,area] = 
+    # @finite_math MCFU[enduse,tech,ec,area] =
     #   DCCR[enduse,tech,ec,area]*DCC[enduse,tech,ec,area]+DOMC[enduse,tech,ec,area]+
     #   ECFP[enduse,tech,ec,area]/
     #   DEE[enduse,tech,ec,area]+
@@ -435,15 +536,15 @@ MCFU = J.diff_fast("MCFU", loc1, loc2; dimension_filters = df2020, sec) # good
 DCCR = J.diff_fast("DCCR", loc1, loc2; dimension_filters = df2020, sec) # good
 FDCC = J.diff_fast("FDCC", loc1, loc2; dimension_filters = df2020, sec) # good
 FDCCU = J.diff_fast("FDCCU", loc1, loc2; dimension_filters = df2020, sec) # good
-@rsubset! FDCCU :Diff != 0 
+@rsubset! FDCCU :Diff != 0
 MCFU0 = J.diff_fast("MCFU", loc1, loc2; dimension_filters, sec) # good
-CMSMI = J.diff_fast("CMSMI", loc1, loc2; dimension_filters = df2020, sec) # good 
+CMSMI = J.diff_fast("CMSMI", loc1, loc2; dimension_filters = df2020, sec) # good
 SPC = J.diff_fast("SPC", loc1, loc2; dimension_filters = df2020, sec) # didn't work
 df2020[:ECC] = "Passenger"
 SPC = J.diff_fast("PC", loc1, loc2; dimension_filters = df2020, sec) # didn't work
-SPC0 = J.diff_fast("PC", loc1, loc2; dimension_filters = dfFirst, sec='M') # didn't work 
-SPop = J.diff_fast("Pop", loc1, loc2; dimension_filters = df2020, sec='M') # didn't work 
-SPop0 = J.diff_fast("Pop", loc1, loc2; dimension_filters = dfFirst, sec='M') # didn't work 
+SPC0 = J.diff_fast("PC", loc1, loc2; dimension_filters = dfFirst, sec='M') # didn't work
+SPop = J.diff_fast("Pop", loc1, loc2; dimension_filters = df2020, sec='M') # didn't work
+SPop0 = J.diff_fast("Pop", loc1, loc2; dimension_filters = dfFirst, sec='M') # didn't work
 dfFirst = copy(df2020)
 dfFirst[:Year] = "1986"
 

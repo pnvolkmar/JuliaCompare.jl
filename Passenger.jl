@@ -5,8 +5,8 @@ import SmallModel as M
 import JuliaCompare: db_files, Canada
 using CSV, DataFrames, DataFramesMeta
 
-BASE_FOLDER = raw"\\Pink\c\2020CanadaSpruce"
-BASE_FOLDER2 = raw"\\Pink\c\2020CanadaTanoak"
+BASE_FOLDER = raw"\\Silver\c\2020CanadaSpruce"
+BASE_FOLDER2 = raw"\\Silver\c\2020CanadaTanoak"
 SCENARIO1 = "Ref24"
 SCENARIO2 = "Ref24"
 
@@ -25,9 +25,18 @@ loc1 = J.Loc_p(vars, DATA_FOLDER1, "Spruce");
 loc2 = J.Loc_j(vars_j, HDF5_path, "Tanoak");
 
 dimension_filters = Dict{Symbol,Any}()
-EuFPol = J.diff("EuFPol", loc1, loc2)
-@rsubset! EuFPol :Area ∈ Canada !(:ECC ∈ ["ForeignPassenger", "ForeignFreight"])
-J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
+push!(dimension_filters, :Area => Canada)
+push!(dimension_filters, :ECC => "UtilityGen")
+sec = 'E'
+EuFPol = J.diff_fast("EuFPol", loc1, loc2; dimension_filters, sec)
+@rsubset! EuFPol :Diff != 0
+J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by ECC")
+@rsubset! EuFPol :Poll == "CO2"
+J.plot_diff(EuFPol; dim="Area", num=10, title="EuFPol diffs by ECC")
+
+# xCapacity is good
+Capacity = J.diff_fast("Capacity", loc1, loc2; dimension_filters, sec)
+@rsubset! Capacity :Diff != 0
 
 @rsubset! EuFPol :ECC == "Passenger" :Poll == "CO2" :Year >= 2020
 EuFPol_g = @by EuFPol :Year begin
@@ -95,21 +104,24 @@ WCUF = J.diff_fast("WCUF", loc1, loc2; dimension_filters, s)
 DDCoefficient = J.diff_fast("DDCoefficient", loc1, loc2; dimension_filters, s)
 DDayNorm = J.diff_fast("DDayNorm", loc1, loc2; dimension_filters, s)
 
-
-DER = J.diff_fast("DER", loc1, loc2; dimension_filters, s)
-DERRRExo = J.diff_fast("DERRRExo", loc1, loc2; dimension_filters, s)
-PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, s)
-PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, s)
-DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, s)
-i = findall(vars.Variable .∈ Ref(["DERV", "DERAV"]) .&& first.(vars.Database) .== 'T')
+s= 'C'
+DER = J.diff_fast("DER", loc1, loc2; dimension_filters, sec)
+DERRRExo = J.diff_fast("DERRRExo", loc1, loc2; dimension_filters, sec)
+PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, sec)
+PERRRExo = J.diff_fast("PERRRExo", loc1, loc2; dimension_filters, sec)
+DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, sec)
+i = findall(vars.Variable .∈ Ref(["DERV", "DERAV"]) .&& first.(vars.Database) .== 'C')
 i = i[1]
-vars[i,:Database] = "TOutput2"
+vars[i,:Database] = "COutput2"
 vars[i,:]
-DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, s)
+DERV = J.diff_fast("DERV", loc1, loc2; dimension_filters, sec)
+J.add_pdiff!(DERV)
 StockAdjustment = J.diff_fast("StockAdjustment", loc1, loc2; dimension_filters, s)
 DERAV = J.diff_fast("DERAV", loc1, loc2; dimension_filters, s)
 dimension_filters[:Year] = string.(2020:2040)
-DERA   = J.diff_fast("DERA", loc1, loc2; dimension_filters, sec = 'T')
+pop!(dimension_filters, :Enduse)
+pop!(dimension_filters, :Tech)
+DERA   = J.diff_fast("DERA", loc1, loc2; dimension_filters, sec = 'C')
 DERAPC = J.diff_fast("DERAPC", loc1, loc2; dimension_filters, sec = 'T')
 DERAP = J.diff_fast("DERAP", loc1, loc2; dimension_filters, sec = 'T')
 DERAD = J.diff_fast("DERAD", loc1, loc2; dimension_filters, sec = 'T')
