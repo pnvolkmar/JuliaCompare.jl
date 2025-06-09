@@ -158,6 +158,7 @@ end
 
 const db_files = ["2020DB", "CCalDB", "CInput", "COutput", "ECalDB", "EGCalDB",
   "EGInput", "EGOutput", "EInput", "EOutput", "ICalDB", "IInput", "IOutput",
+  "KOutput", "KInput",
   "MCalDB", "MEInput", "MEOutput", "Minput", "Moutput", "RCalDB", "RInput",
   "ROutput", "SCalDB", "Sinput", "SOutput", "SpInput", "SpOutput", "TCalDB",
   "TInput", "TOutput", "VBInput", "vData_ElectricUnits"
