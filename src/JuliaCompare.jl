@@ -12,51 +12,6 @@ include("TidyingArrays.jl")
 
 greet() = print("Hello Randy")
 
-function f_on(df_in)
-  df = copy(df_in)
-  if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["ON"]
-  end
-  if "Fuel" ∈ names(df)
-    @rsubset! df :Fuel == "Ethanol"
-  end
-  if "FuelEP" ∈ names(df)
-    @rsubset! df :FuelEP == "Ethanol"
-  end
-  if "EC" ∈ names(df)
-    @rsubset! df :EC == "ResidentialOffRoad"
-  end
-  if "ECC" ∈ names(df)
-    @rsubset! df :ECC == "ResidentialOffRoad"
-  end
-  if "Poll" ∈ names(df)
-    @rsubset! df :Poll ∈ ["CO2", "COX"]
-  end
-  if "Year" ∈ names(df)
-    @rsubset! df :Year ∈ [2020, 2021]
-  end
-  if "Diff" ∈ names(df)
-    @rsubset! df abs(:Diff) > 1e-7
-  end
-  return (df)
-end
-
-function f_al(df_in)
-  df = copy(df_in)
-  if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["AB"]
-  end
-  if "Year" ∈ names(df)
-    @rsubset! df :Year ∈ [1990]
-  end
-  if "EC" ∈ names(df)
-    @rsubset! df :EC ∈ ["Aluminum"]
-  end
-  if "ECC" ∈ names(df)
-    @rsubset! df :ECC ∈ ["Aluminum"]
-  end
-  return (df)
-end
 const open_databases = Dict{String, HDF5.File}()
 function CloseAllDatabases()
   for (db, file) in open_databases
@@ -65,86 +20,6 @@ function CloseAllDatabases()
   empty!(open_databases)
   return length(open_databases)
 end
-
-function f_fp(df_in)
-  df = copy(df_in)
-  if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["ON"]
-  end
-  if "FuelEP" ∈ names(df)
-    @rsubset! df :FuelEP == "JetFuel"
-  end
-  if "Fuel" ∈ names(df)
-    @rsubset! df :Fuel == "JetFuel"
-  end
-  if "ECC" ∈ names(df)
-    @rsubset! df :ECC == "ForeignPassenger"
-  end
-  if "EC" ∈ names(df)
-    @rsubset! df :EC == "ForeignPassenger"
-  end
-  if "Poll" ∈ names(df)
-    @rsubset! df :Poll == "CO2"
-  end
-  if "Year" ∈ names(df)
-    @rsubset! df :Year > 2007 :Year < 2030 # ∈ [2007,2008]
-  end
-  if "Diff" ∈ names(df)
-    @rsubset! df abs(:Diff) >= 1e-7
-  end
-  return (df)
-end
-
-function filter_bm(df_in)
-  df = copy(df_in)
-  if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["ON"]
-  end
-  if "Enduse" ∈ names(df)
-    @rsubset! df :Enduse ∈ ["HW","OthSub"]
-  end
-  if "EC" ∈ names(df)
-    @rsubset! df :EC == "Offices"
-  end
-  if "ECC" ∈ names(df)
-    @rsubset! df :ECC == "Offices"
-  end
-  if "Tech" ∈ names(df)
-    @rsubset! df :Tech ∈ ["Biomass"]
-  end
-  if "Year" ∈ names(df)
-    @rsubset! df :Year ∈ [1985,2000]
-  end
-  return (df)
-end
-
-function f_og(df_in)
-  df = copy(df_in)
-  if "Area" ∈ names(df)
-    @rsubset! df :Area ∈ ["AB"]
-  end
-  # if "Enduse" ∈ names(df)
-  #   @rsubset! df :Enduse ∈ ["HW","OthSub"]
-  # end
-  if "EC" ∈ names(df)
-    @rsubset! df :EC == "ConventionalGasProduction"
-  end
-  if "ECC" ∈ names(df)
-    @rsubset! df :ECC == "ConventionalGasProduction"
-  end
-  # if "Tech" ∈ names(df)
-  #   @rsubset! df :Tech ∈ ["Biomass"]
-  # end
-  if "Year" ∈ names(df)
-    @rsubset! df :Year ∈ [2000]
-  end
-  if "Diff" ∈ names(df)
-    @rsubset! df abs(:Diff) >= 1e-7
-  end
-  return (df)
-end
-
-
 struct Loc_p
   vars::DataFrame
   DATA_FOLDER::String
@@ -241,6 +116,31 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   DataFrame(Variable=vars, Dimensions=dims, Description=desc, Database=cfilename, DPairs=dim_pairs)
 end
 
+function list_vars(DATA_FOLDER, db_files)
+  pathv = splitpath(DATA_FOLDER)
+  pathidx = only(findall(pathv.=="2020Model"))
+  CODE_FOLDER = joinpath(joinpath(pathv[1:pathidx-1]), "Engine")
+  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, true), db_files)
+  vars = vcat(dfs...)
+
+  vars.RowID = 1:size(vars, 1)
+  vars = @chain vars begin
+    select!(_, :RowID, Not(:RowID)) # Move ID column to the front
+  end
+  return (vars)
+end
+
+function list_vars(CODE_FOLDER, DATA_FOLDER, db_files)
+  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, true), db_files)
+  vars = vcat(dfs...)
+
+  vars.RowID = 1:size(vars, 1)
+  vars = @chain vars begin
+    select!(_, :RowID, Not(:RowID)) # Move ID column to the front
+  end
+  return (vars)
+end
+
 function list_vars(file::String)
   data = Vector{NamedTuple{(:Variable, :Database),Tuple{String,String}}}()
   sizehint!(data, 5000)
@@ -295,17 +195,6 @@ function get_data(i, vars, DATA_FOLDER)
   fname = joinpath(DATA_FOLDER, string(vars.Database[i], ".dba"))
   vname = string(vars.Variable[i])
   P.data(fname, vname)
-end
-
-function list_vars(CODE_FOLDER, DATA_FOLDER, db_files)
-  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, true), db_files)
-  vars = vcat(dfs...)
-
-  vars.RowID = 1:size(vars, 1)
-  vars = @chain vars begin
-    select!(_, :RowID, Not(:RowID)) # Move ID column to the front
-  end
-  return (vars)
 end
 
 function find_var(needle, vars; exact::Bool=false)
@@ -767,7 +656,8 @@ result = subset_dataframe(df, Dict(
 result = subset_dataframe(df, Dict("Year" => 2022), drop_filtered_cols=true)
 ```
 """
-function subset_dataframe(df::DataFrame, filters::Dict{<:Any,<:Any}; drop_filtered_cols::Bool=false)
+function subset_dataframe(df_in::DataFrame, filters::Dict{<:Any,<:Any}; drop_filtered_cols::Bool=false)
+  df = copy(df_in)
   # Check if the DataFrame is empty
   isempty(df) && return df
   
@@ -778,13 +668,21 @@ function subset_dataframe(df::DataFrame, filters::Dict{<:Any,<:Any}; drop_filter
   for (col_key, condition) in filters
       # Handle different key types (Symbol, String, etc.)
       col_sym = col_key isa Symbol ? col_key : Symbol(string(col_key))
-      
       # Check if the column exists in the DataFrame
-      if !(col_sym in names(df))
-          # Skip this filter if column doesn't exist
-          continue
+      if !(col_sym in Symbol.(names(df)))
+        # Skip this filter if column doesn't exist
+        println("Skipping col ", col_sym)
+        continue
       end
-      
+      println("Using col ", col_sym)
+      if col_sym == :Year
+        if condition isa AbstractVector
+          condition = [parse(Int,c) for c in condition]
+        else 
+          condition = parse(Int,condition)
+        end
+      end
+      println("Condition is: ", condition)
       # Add to list of filtered columns
       push!(filtered_cols, col_sym)
       
@@ -805,6 +703,7 @@ function subset_dataframe(df::DataFrame, filters::Dict{<:Any,<:Any}; drop_filter
           # Single value equality check
           filter!(row -> row[col_sym] == condition, df)
       end
+      println("df has nrows: ", size(df))
   end
   
   # Drop the filtered columns if requested
@@ -823,70 +722,61 @@ In-place version of subset_dataframe that modifies the input DataFrame directly.
 # Arguments and behavior are the same as subset_dataframe
 """
 function subset_dataframe!(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
-    # Check if the DataFrame is empty
-    isempty(df) && return df
-    
-    # Keep track of columns we've filtered on
-    filtered_cols = String[]
-    
-    # Create a mask for all rows
-    mask = trues(nrow(df))
-    
-    # Apply each filter to update the mask
-    for (col, condition) in filters
-        # Check if the column exists in the DataFrame
-        col_sym = col isa Symbol ? col : Symbol(string(col))
-        if !(col_sym in Symbol.(names(df)))
-          println("Column $col not found in DataFrame $(names(df))")
-            # Skip this filter if column doesn't exist
-            continue
-        end
-        
-        # Add to list of filtered columns
-        push!(filtered_cols, string(col))
-        
-        # Update the mask based on the condition type
+  # Check if the DataFrame is empty
+  isempty(df) && return df
+  
+  # Keep track of columns we've filtered on
+  filtered_cols = Symbol[]
+  
+  # Apply each filter
+  for (col_key, condition) in filters
+      # Handle different key types (Symbol, String, etc.)
+      col_sym = col_key isa Symbol ? col_key : Symbol(string(col_key))
+      # Check if the column exists in the DataFrame
+      if !(col_sym in Symbol.(names(df)))
+        # Skip this filter if column doesn't exist
+        println("Skipping col ", col_sym)
+        continue
+      end
+      println("Using col ", col_sym)
+      if col_sym == :Year
         if condition isa AbstractVector
-            # Vector of allowed values
-            for i in 1:nrow(df)
-                mask[i] = mask[i] && (df[i, col_sym] in condition)
-            end
-        elseif condition isa AbstractRange
-            # Range of values
-            for i in 1:nrow(df)
-                mask[i] = mask[i] && (df[i, col_sym] in condition)
-            end
-        elseif condition isa Function
-            # Function that returns boolean
-            for i in 1:nrow(df)
-                mask[i] = mask[i] && condition(df[i, col_sym])
-            end
-        elseif condition isa Regex
-            # Regex pattern for string columns
-            for i in 1:nrow(df)
-                val = df[i, col_sym]
-                mask[i] = mask[i] && (typeof(val) <: AbstractString && 
-                                     !isnothing(match(condition, val)))
-            end
-        else
-            # Single value equality check
-            for i in 1:nrow(df)
-                mask[i] = mask[i] && (df[i, col_sym] == condition)
-            end
+          condition = [parse(Int,c) for c in condition]
+        else 
+          condition = parse(Int,condition)
         end
-    end
-    
-    # Apply the final mask
-    deleteat!(df, .!mask)
-    
-    # Drop the filtered columns if requested
-    if drop_filtered_cols && !isempty(filtered_cols)
-        select!(df, Not(Symbol.(filtered_cols)))
-    end
-    
-    return df
+      end
+      println("Condition is: ", condition)
+      # Add to list of filtered columns
+      push!(filtered_cols, col_sym)
+      
+      # Apply the filter based on the condition type
+      if condition isa AbstractVector
+          # Vector of allowed values
+          filter!(row -> row[col_sym] in condition, df)
+      elseif condition isa AbstractRange
+          # Range of values
+          filter!(row -> row[col_sym] in condition, df)
+      elseif condition isa Function
+          # Function that returns boolean
+          filter!(row -> condition(row[col_sym]), df)
+      elseif condition isa Regex && eltype(df[!, col_sym]) <: AbstractString
+          # Regex pattern for string columns
+          filter!(row -> !isnothing(match(condition, row[col_sym])), df)
+      else
+          # Single value equality check
+          filter!(row -> row[col_sym] == condition, df)
+      end
+      println("df has nrows: ", size(df))
+  end
+  
+  # Drop the filtered columns if requested
+  if drop_filtered_cols && !isempty(filtered_cols)
+      select!(df, Not(filtered_cols))
+  end
+  
+  return df
 end
-
 # Performance optimized version for large DataFrames
 """
     subset_dataframe_optimized(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
@@ -1177,8 +1067,9 @@ In-place version that adds a PDiff column directly to the input DataFrame.
 """
 function add_pdiff!(df)
     # Check if required columns exist
-    required_cols = [:Spruce, :Tanoak]
-    
+    col_diff = findfirst(names(df).=="Diff")
+    required_cols = Symbol.(names(df)[(col_diff-2):(col_diff-1)])
+
     for col in required_cols
         if !(col in propertynames(df))
             error("Column '$col' not found in DataFrame")
@@ -1191,7 +1082,7 @@ function add_pdiff!(df)
     # Calculate PDiff
     if has_diff
         # Calculate raw percent differences
-        raw_pdiff = (df.Spruce .- df.Tanoak) ./ df.Tanoak .* 100.0
+        raw_pdiff = (df[:,required_cols[1]] .- df[:,required_cols[2]]) ./ df[:,required_cols[2]] .* 100.0
         
         # Round to 2 decimal places
         raw_pdiff = round.(raw_pdiff, digits=2)
@@ -1201,7 +1092,7 @@ function add_pdiff!(df)
                   for (diff, pdiff) in zip(df.Diff, raw_pdiff)]
     else
         # Just calculate percent difference without the zero check
-        df.PDiff = round.((df.Spruce .- df.Tanoak) ./ df.Tanoak .* 100.0, digits=2)
+        df.PDiff = round.((df[:,required_cols[1]] .- df[:,required_cols[2]]) ./ df[:,required_cols[2]] .* 100.0, digits=2)
     end
     
     return df

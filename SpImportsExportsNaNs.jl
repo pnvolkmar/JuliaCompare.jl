@@ -11,7 +11,7 @@ using CSV, DataFrames, DataFramesMeta
 BASE_FOLDER = raw"\\Pink\c\2020CanadaSpruce"
 BASE_FOLDER2 = raw"\\Pink\c\2020CanadaTanoak"
 SCENARIO1 = "Ref24"
-SCENARIO2 = "Ref24"
+SCENARIO2 = "Base"
 ################################################################################
 
 CODE_FOLDER = joinpath(BASE_FOLDER, "Engine")
@@ -38,7 +38,7 @@ push!(dimension_filters, :Area => ["NB","NS"])
 push!(dimension_filters, :Process => ["ConventionalGasProduction"])
 push!(dimension_filters, :ECC => ["ConventionalGasProduction"])
 push!(dimension_filters, :EC => ["ConventionalGasProduction"])
-push!(dimension_filters, :Year => string.(1985:2023))
+push!(dimension_filters, :Year => string.(2022:2023))
 push!(dimension_filters, :OGUnit => ["NB_Gas_0001", "NS_Gas_0001"])
 
 push!(dimension_filters, :Area => ["WSC"])
@@ -65,7 +65,7 @@ PdMax = J.diff_fast("PdMax", loc1, loc2; dimension_filters, sec) # good
 xPdRate = J.diff_fast("xPdRate", loc1, loc2; dimension_filters, sec) # good
 PdRateM = J.diff_fast("PdRateM", loc1, loc2; dimension_filters, sec) # bad
 PdRateMRef = J.diff_fast("PdRateM", loc1, tan_ogref; dimension_filters, sec) # good
-PdSw = J.diff_fast("PdSw", loc1, loc2; dimension_filters, sec) # good
+PdSw = J.diff_fast("PdSw", loc1, loc2; dimension_filters, sec) # 2.0
 OAPrEOR = J.diff_fast("OAPrEOR", loc1, loc2; dimension_filters, sec) # as expected
 # @finite_math PdRateM[ogunit] = max(min((1+PdVar[ogunit])/(PdVar[ogunit]+
 #   (PdROI[ogunit]/PdROIRef[ogunit])^PdVF[ogunit]),
@@ -75,7 +75,7 @@ OAPrEOR = J.diff_fast("OAPrEOR", loc1, loc2; dimension_filters, sec) # as expect
 PdVar = J.diff_fast("PdVar", loc1, loc2; dimension_filters, sec) # good
 PdROI = J.diff_fast("PdROI", loc1, loc2; dimension_filters, sec) # bad
 PdROIRef = J.diff_fast("PdROI", loc1, tan_ogref; dimension_filters, sec) # bad
-PdVF = J.diff_fast("PdVF", loc1, loc2; dimension_filters, sec) # discrepancies
+PdVF = J.diff_fast("PdVF", loc1, loc2; dimension_filters, sec) # good
 PdMaxM = J.diff_fast("PdMaxM", loc1, loc2; dimension_filters, sec) # good
 PdMinM = J.diff_fast("PdMinM", loc1, loc2; dimension_filters, sec) # good
 #   @finite_math PdROI[ogunit] = PdNtInc[ogunit] /(SusCap[ogunit])
@@ -127,25 +127,28 @@ PERRef = J.diff_fast("PER", loc1, loc2; dimension_filters, sec) # good
 #           EUPCTemp[enduse,tech,ec,area] for tech in Techs, enduse in enduses)
 PCC = J.diff_fast("PCC", loc1, loc2; dimension_filters, sec) # good
 @rsubset PCC isnan(:Tanoak) # bad for enduse heat and techs LPG in NB and Gas in NS all the way back to 1986
-PEESw = J.diff_fast("PEESw", loc1, loc2; dimension_filters, sec) # 1
+PEESw = J.diff_fast("PEESw", loc1, loc2; dimension_filters, sec) # 2
 push!(dimension_filters, :Enduse => "Heat")
 push!(dimension_filters, :Tech => ["LPG", "Gas"])
-PCCPrice = J.diff_fast("PCCPrice", loc1, loc2; dimension_filters, sec) # bad
+PCCPrice = J.diff_fast("PCCPrice", loc1, loc2; dimension_filters, sec) # discrepancies, zeros in problem Tech Area pairs
 
 # @finite_math PCCPrice[enduse,tech,ec,area] = PCCN[enduse,tech,ec,area]*
 #   PCCMM[enduse,tech,ec,area]*Inflation[area]*
 #   (1+STX[area])*(PEM[enduse,ec,area]*PEMM[enduse,tech,ec,area]/
 #   PEEPrice[enduse,tech,ec,area]-1)^(1/PCTC[enduse,tech,ec,area])
 
-PCCMM = J.diff_fast("PCCMM", loc1, loc2; dimension_filters, sec) # bad
-Inflation = J.diff_fast("Inflation", loc1, loc2; dimension_filters, sec) # bad
-STX = J.diff_fast("STX", loc1, loc2; dimension_filters, sec) # bad
-PEM = J.diff_fast("PEM", loc1, loc2; dimension_filters, sec) # bad
-PEMM = J.diff_fast("PEMM", loc1, loc2; dimension_filters, sec) # bad
-PEEPrice = J.diff_fast("PEEPrice", loc1, loc2; dimension_filters, sec) # bad
-PCCN = J.diff_fast("PCCN", loc1, loc2; dimension_filters, sec) # zeros
-PCTC = J.diff_fast("PCTC", loc1, loc2; dimension_filters, sec) # zeros
+PCCMM = J.diff_fast("PCCMM", loc1, loc2; dimension_filters, sec) # good
+Inflation = J.diff_fast("Inflation", loc1, loc2; dimension_filters, sec) # good
+STX = J.diff_fast("STX", loc1, loc2; dimension_filters, sec) # 0
+PEM = J.diff_fast("PEM", loc1, loc2; dimension_filters, sec) # Too small in Tanoak
+PEMM = J.diff_fast("PEMM", loc1, loc2; dimension_filters, sec) # 1 good
+PEEPrice = J.diff_fast("PEEPrice", loc1, loc2; dimension_filters, sec) # Too small in Tanoak
+PCCN = J.diff_fast("PCCN", loc1, loc2; dimension_filters, sec = 'I') # zeros in problem Tech Area pairs
+@rsubset PCCN :Diff != 0 # zeros in problem Tech Area pairs
+PCTC = J.diff_fast("PCTC", loc1, loc2; dimension_filters, sec = 'I') # zeros
 @rsubset PCTC :Tanoak == 0
+push!(dimension_filters, :Year => "1986")
+Driver = J.diff_fast("Driver", loc1, loc2; dimension_filters, sec) # 0.0001 in Tanoak
 
 
 InitialDemandYear = J.diff_fast("InitialDemandYear", loc1, loc2; dimension_filters, sec) # 1985

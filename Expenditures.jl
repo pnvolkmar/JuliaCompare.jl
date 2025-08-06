@@ -10,8 +10,8 @@ using CSV, DataFrames, DataFramesMeta
 ################################################################################
 BASE_FOLDER = raw"\\Pink\c\2020CanadaSpruce"
 BASE_FOLDER2 = raw"\\Pink\c\2020CanadaTanoak"
-SCENARIO1 = "Ref24"
-SCENARIO2 = "Ref24"
+SCENARIO1 = ""
+SCENARIO2 = ""
 ################################################################################
 
 CODE_FOLDER = joinpath(BASE_FOLDER, "Engine")
@@ -35,12 +35,67 @@ tan_base = J.Loc_j(vars_j, "\\\\Pink\\c\\2020CanadaTanoak\\2020Model\\Base\\data
 ################################################################################
 sec = 'T'
 dimension_filters = Dict{Symbol,Any}()
-ECC = M.ReadDisk(loc2.HDF5_path, "E2020DB/ECCKey")
-push!(dimension_filters, :ECC => ECC[ECC .∉ Ref(["ForeignPassenger", "ForeignFreight"])])
 push!(dimension_filters, :Area => Canada)
+push!(dimension_filters, :ECC => ["CommercialOffRoad","Passenger","ForeignPassenger"])
+push!(dimension_filters, :EC => ["CommercialOffRoad","Passenger","ForeignPassenger"])
+offroad = copy(dimension_filters)
+push!(offroad, :ECC => ["CommercialOffRoad"])
+push!(offroad, :EC => ["CommercialOffRoad"])
+push!(offroad, :Area => "ON")
 
-EuFPol = J.diff_fast("EuFPol", loc1, loc2; dimension_filters, sec)
-J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
+OMExp = J.diff_fast("OMExp", loc1, loc2; dimension_filters, sec)
+@rsubset! OMExp :Diff != 0
+J.plot_diff(OMExp; dim="Area", num=10, title="OMExp diffs by Area")
+J.plot_diff(OMExp; dim="ECC", num=10, title="OMExp diffs by ECC")
+
+DOMExp = J.diff_fast("DOMExp", loc1, loc2; dimension_filters=offroad, sec)
+@rsubset! DOMExp :Diff != 0
+J.plot_diff(DOMExp; dim="Area", num=10, title="OMExp diffs by Area")
+
+CgOMExp = J.diff_fast("CgOMExp", loc1, loc2; dimension_filters, sec)
+@rsubset! CgOMExp :Diff != 0
+J.plot_diff(CgOMExp; dim="Area", num=10, title="OMExp diffs by Area")
+
+      # DOMExp[ecc,area] = sum(DCCFullCost[enduse,tech,ec,area]*DOCF[enduse,tech,ec,area]*
+      #   PER[enduse,tech,ec,area]*Inflation[area] for tech in Techs,enduse in Enduses)/1000000
+DCCFullCost = J.diff_fast("DCCFullCost", loc1, loc2; dimension_filters=offroad, sec)
+DOCF = J.diff_fast("DOCF", loc1, loc2; dimension_filters=offroad, sec)
+PER = J.diff_fast("PER", loc1, loc2; dimension_filters=offroad, sec)
+Inflation = J.diff_fast("Inflation", loc1, loc2; dimension_filters=offroad, sec)
+@rsubset! DCCFullCost abs(:Diff) >= 1e-3
+@rsubset! DOCF :Diff != 0
+@rsubset! PER :Diff != 0
+@rsubset! Inflation :Diff != 0
+
+unique(DCCFullCost.Tech)
+unique(DOCF.Tech)
+# @finite_math DCCFullCost[enduse,tech,ec,area] = (DCC[enduse,tech,ec,area]+
+#   DCCSubsidy[enduse,tech,ec,area]*Inflation[area]*
+#   DEEPolicyMSF[enduse,tech,ec,area])*((1+STXB[area])/(1+STX[area]))/
+#   (1-DGF[enduse,tech,ec,area])
+
+      
+sec = 'C'
+push!(dimension_filters, :ECC => "Wholesale")
+push!(dimension_filters, :EC => "Wholesale")
+push!(dimension_filters, :Year => "2021")
+
+Inflation = J.diff_fast("Inflation", loc1, loc2; dimension_filters, sec) # fine
+@rsubset Inflation abs(:Diff) > 1e-4
+CgDmd = J.diff_fast("CgDmd", loc1, loc2; dimension_filters, sec) # fine
+@rsubset CgDmd abs(:Diff) > 1e-4
+CgDC = J.diff_fast("CgDC", loc1, loc2; dimension_filters, sec) # fine
+@rsubset CgDC abs(:Diff) > 1e-4
+CgOF = J.diff_fast("CgOF", loc1, loc2; dimension_filters, sec) # fine
+@rsubset CgOF abs(:Diff) > 1e-4
+CgCC = J.diff_fast("CgCC", loc1, loc2; dimension_filters, sec) # fine
+@rsubset CgCC abs(:Diff) > 1e-4
+DCCFullCost = J.diff_fast("DCCFullCost", loc1, loc2; dimension_filters, sec) # fine
+@rsubset DCCFullCost abs(:Diff) > 1e-4
+DOCF = J.diff_fast("DOCF", loc1, loc2; dimension_filters, sec) # fine
+@rsubset! DOCF abs(:Diff) > 1e-4
+PER = J.diff_fast("PER", loc1, loc2; dimension_filters, sec) # fine
+@rsubset! PER abs(:Diff) > 1e-4
 
 @rsubset! EuFPol :ECC == "CommercialOffRoad" :Poll == "CO2" :Year >= 2020
 EuFPol_g = @by EuFPol :Year begin

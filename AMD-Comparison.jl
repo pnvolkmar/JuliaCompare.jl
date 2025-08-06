@@ -48,7 +48,7 @@ J.add_pdiff!(TotPol)
 leftjoin!(TotPol, PolConv, on = :Poll)
 TotPol.Spruce = TotPol.Spruce .* TotPol.PolConv
 TotPol.Tanoak = TotPol.Tanoak .* TotPol.PolConv
-TotPol = @by TotPol [:Area,:Year] :Spruce = sum(:Spruce) :Tanoak = sum(:Tanoak)
+TotPol = @by TotPol [:Year] :Spruce = sum(:Spruce) :Tanoak = sum(:Tanoak)
 TotPol.Diff = TotPol.Spruce - TotPol.Tanoak
 J.plot_diff(TotPol; dim = "Area", title = "Utility Gen TotPol Differences (GHG Tonnes) by Area")
 

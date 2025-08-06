@@ -39,6 +39,8 @@ push!(dimension_filters, :Area => Canada)
 
 EuFPol = J.diff_fast("EuFPol", loc1, loc2; dimension_filters, sec)
 J.plot_diff(EuFPol; dim="ECC", num=10, title="EuFPol diffs by ECC")
+@rsubset! EuFPol :Diff != 0
+J.plot_diff(EuFPol, dim = "ECC")
 
 @rsubset! EuFPol :ECC == "CommercialOffRoad" :Poll == "CO2" :Year >= 2020
 EuFPol_g = @by EuFPol :Year begin
