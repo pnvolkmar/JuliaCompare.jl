@@ -7,6 +7,7 @@ using Makie, CairoMakie
 using Colors, CategoricalArrays
 import SmallModel: ReadDisk, ReadSets
 
+export db_files, Canada
 include("UnCodeMapping.jl")
 include("TidyingArrays.jl")
 
@@ -335,51 +336,50 @@ function lookup_database(name, loc; sec::Char="")
         println(vars[temp2,[:Variable, :Database]])
         error("Variable not found")
         return (vars[temp2,[:Variable, :Database]])
-      elseif unique(temp, [:Variable, :Dimensions]) == 1
-        print("Combining ", nrow(temp), "variables")
-        return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
-      else
-        println(name, "\n")
-        println(temp)
-        return (temp)
       end
     end
   end
 end
 
 
+function arr_set(vname::String, dbname::String, loc::Loc_j)
+  sets = ReadSets(loc.HDF5_path, string(dbname,"/", vname))
+  arr = ReadDisk(loc.HDF5_path, string(dbname,"/", vname))
+  if :Unit ∈ keys(sets)
+    UnCode = ReadDisk(loc.HDF5_path, "EGInput/UnCode")
+    sets.Unit[:] = UnCode[:]
+  end
+  return(arr, sets)
+end
+
+function arr_set(vname::String, dbname::String, loc::Loc_p)
+  arr = P.data(joinpath(loc.DATA_FOLDER,string(dbname,".dba")), vname)
+  idx = findfirst(loc.vars.Variable .== vname .&& loc.vars.Database .== dbname)
+  keys = Symbol.(split(loc.vars.Dimensions[idx], ","))
+  dim_pairs = loc.vars.DPairs[idx]
+  values = [P.data(key,value) for (key, value) in dim_pairs]
+  # sets = [Symbol(k) => v for (k,v) in (keys, values)]
+  # sets = zip(dim_names,sets_values)
+  println(typeof(keys)); println(size(keys))
+  println(typeof(values)); println(size(values))
+  # return(arr,values)
+  sets =  (; zip(keys, values)...)
+  return(arr, sets)
+end
+
 function diff_fast(name::String, loc1, loc2; 
                    dimension_filters::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
                    sec::Char="")
-  name1 = loc1.name
-  name2 = loc2.name
   vname1, dbname1 = lookup_database(name, loc1; sec)
   vname2, dbname2 = lookup_database(name, loc2; sec)
-  if typeof(loc1) == Loc_j
-    sets = ReadSets(loc1.HDF5_path, string(dbname1,"/", vname1))
-    arr1 = ReadDisk(loc1.HDF5_path, string(dbname1,"/", vname1))
-    if :Unit ∈ keys(sets)
-      UnCode = ReadDisk(loc1.HDF5_path, "EGInput/UnCode")
-      sets.Unit[:] = UnCode[:]
-    end
-  elseif typeof(loc1) == Loc_p
-    arr1 = P.data(joinpath(loc1.DATA_FOLDER,string(dbname1,".dba")), vname1)
-  end
-  if typeof(loc2) == Loc_j
-    sets = ReadSets(loc2.HDF5_path, string(dbname2,"/", vname2))
-    arr2 = ReadDisk(loc2.HDF5_path, string(dbname2,"/", vname2))
-    if :Unit ∈ keys(sets)
-      UnCode = ReadDisk(loc2.HDF5_path, "EGInput/UnCode")
-      sets.Unit[:] = UnCode[:]
-    end
-  else
-    arr2 = P.data(joinpath(loc2.DATA_FOLDER,string(dbname2,".dba")), vname1)
-  end
+  arr1, set1 = arr_set(vname1, dbname1, loc1)
+  arr2, set2 = arr_set(vname2, dbname2, loc2)
+  set1 == set2 ? sets = set1 : error("Sets Don't Match")
   arr1, set1 = subset_array(arr1, sets, dimension_filters)
   arr2, set2 = subset_array(arr2, sets, dimension_filters)
   df1 = to_tidy_dataframe(arr1, set1)
   df2 = to_tidy_dataframe(arr2, set2)
-  df = diff(df1, df2; name1, name2)
+  df = diff(df1, df2; loc1.name, loc2.name)
 end
 
 function join_vars(df1::DataFrame, df2::DataFrame)
@@ -894,10 +894,6 @@ function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
   
   return df
 end
-
-  
-  
-      
 
 """
     ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
