@@ -14,8 +14,8 @@ DATA_FOLDER2 = raw"\\Pink\c\2020CanadaRedwood\2020Model"
 
 vars = J.list_vars(DATA_FOLDER1, db_files);
 vars_j = J.list_vars(joinpath(DATA_FOLDER2,"database.hdf5"))
-loc1 = J.Loc_p(vars, DATA_FOLDER1, "Pine");
-loc2 = J.Loc_j(vars_j, joinpath(DATA_FOLDER2, "database.hdf5"), "Redwood");
+loc1 = J.Loc_p(vars, raw"\\Pink\c\2020CanadaPineAqua\2020Model\Ref25", "Pine");
+loc2 = J.Loc_j(vars_j, joinpath(raw"\\Pink\c\2020CanadaRedwoodAqua\2020Model\Ref25", "database.hdf5"), "Redwood");
 red_base = J.Loc_j(vars_j, "\\\\Pink\\c\\2020CanadaRedwood\\2020Model\\Base\\database.hdf5", "Redwood");
 pine_base = J.Loc_p(vars, "\\\\Pink\\c\\2020CanadaPine\\2020Model\\Base", "Pine");
 red_ogref = J.Loc_j(vars_j, "\\\\Pink\\c\\2020CanadaRedwood\\2020Model\\OGRef\\database.hdf5", "Redwood");
@@ -31,15 +31,6 @@ dimension_filters = Dict{Symbol,Any}()
 push!(dimension_filters, :Area => Canada, :Year => string.(1986:2050))
 ECC = M.ReadDisk(loc2.HDF5_path, "E2020DB/ECCKey")
 push!(dimension_filters, :ECC => ECC[occursin.("Foreign", ECC) .== false])
-
-pass = copy(dimension_filters)
-push!(pass, :EC => "Fertilizer",  :ECC => "Fertilizer")
-push!(pass, :Poll => "CO2")
-push!(pass, :Area => ["AB","SK","MB","ON"])
-push!(pass, :AreaTOM => ["AB","SK","MB","ON"])
-push!(pass, :Fuel => "NaturalGas", :FuelEP => "NaturalGas")
-push!(pass, :Enduse => "Heat")
-push!(pass, :Tech => ["Electric","Gas","LPG"])
 
 pass = copy(dimension_filters)
 push!(pass, :Year => string.([1986; 2023:2030]))
