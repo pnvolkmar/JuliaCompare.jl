@@ -5,7 +5,7 @@ using DataFrames, Chain, DataFramesMeta, HDF5
 import PromulaDBA as P
 using Makie, CairoMakie
 using Colors, CategoricalArrays
-import SmallModel: ReadDisk, ReadSets
+import SmallModel: ReadDisk, ReadSets, data_attrs
 
 export db_files, Canada
 include("UnCodeMapping.jl")
@@ -341,13 +341,38 @@ function lookup_database(name, loc; sec::Char="")
   end
 end
 
-
 function arr_set(vname::String, dbname::String, loc::Loc_j)
-  sets = ReadSets(loc.HDF5_path, string(dbname,"/", vname))
   arr = ReadDisk(loc.HDF5_path, string(dbname,"/", vname))
-  if :Unit ∈ keys(sets)
-    UnCode = ReadDisk(loc.HDF5_path, "EGInput/UnCode")
-    sets.Unit[:] = UnCode[:]
+  vattr = data_attrs(loc.HDF5_path, string(dbname,"/", vname))
+  if vattr["type"] == "variable"
+    sets = ReadSets(loc.HDF5_path, string(dbname,"/", vname))
+    if :Unit ∈ keys(sets)
+      UnCode = ReadDisk(loc.HDF5_path, "EGInput/UnCode")
+      sets.Unit[:] = UnCode[:]
+    end
+  else
+    if vattr["type"] != "set"
+      println(string(dbname,"/", vname), " is of type ", vattr["type"], ". This is unusual.")
+    end
+    values = copy(arr)
+    idx = findfirst("Key", vname)
+    idx_test = findfirst("key", vname)
+    if isnothing(idx)
+      key = [Symbol(vname)]
+    else
+      key = [Symbol(vname[setdiff(1:length(vname), idx)])]
+    end
+    sets =  (; zip(key, [values])...)
+  end
+  if :TimeP ∈ keys(sets)
+    if '(' ∉ sets[:TimeP][1]
+      push!(sets(map(tp -> "TimeP($(match(r"\d+", tp).match))", sets[:TimeP])))
+    end
+  end
+  if :TimeA ∈ keys(sets)
+    if '(' ∉ sets[:TimeA][1]
+      push!(sets(map(tp -> "TimeA($(match(r"\d+", tp).match))", sets[:TimeA])))
+    end
   end
   return(arr, sets)
 end
@@ -358,20 +383,15 @@ function arr_set(vname::String, dbname::String, loc::Loc_p)
   keys = Symbol.(split(loc.vars.Dimensions[idx], ","))
   dim_pairs = loc.vars.DPairs[idx]
   values = [P.data(key,value) for (key, value) in dim_pairs]
-  # sets = [Symbol(k) => v for (k,v) in (keys, values)]
-  # sets = zip(dim_names,sets_values)
-  println(typeof(keys)); println(size(keys))
-  println(typeof(values)); println(size(values))
-  # return(arr,values)
   sets =  (; zip(keys, values)...)
   return(arr, sets)
 end
 
-function diff_fast(name::String, loc1, loc2; 
+function diff_fast(vname::String, loc1, loc2; 
                    dimension_filters::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
                    sec::Char="")
-  vname1, dbname1 = lookup_database(name, loc1; sec)
-  vname2, dbname2 = lookup_database(name, loc2; sec)
+  vname1, dbname1 = lookup_database(vname, loc1; sec)
+  vname2, dbname2 = lookup_database(vname, loc2; sec)
   arr1, set1 = arr_set(vname1, dbname1, loc1)
   arr2, set2 = arr_set(vname2, dbname2, loc2)
   set1 == set2 ? sets = set1 : error("Sets Don't Match")
@@ -379,7 +399,7 @@ function diff_fast(name::String, loc1, loc2;
   arr2, set2 = subset_array(arr2, sets, dimension_filters)
   df1 = to_tidy_dataframe(arr1, set1)
   df2 = to_tidy_dataframe(arr2, set2)
-  df = diff(df1, df2; loc1.name, loc2.name)
+  df = diff(df1, df2; name1 = loc1.name, name2 = loc2.name)
 end
 
 function join_vars(df1::DataFrame, df2::DataFrame)
