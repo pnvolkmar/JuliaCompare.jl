@@ -37,8 +37,9 @@ end
 
 const db_files = ["2020DB", "CCalDB", "CInput", "COutput", "ECalDB", "EGCalDB",
   "EGInput", "EGOutput", "EInput", "EOutput", "ICalDB", "IInput", "IOutput",
-  "MCalDB", "MEInput", "MEOutput", "Minput", "Moutput", "RCalDB", "RInput",
-  "ROutput", "SCalDB", "Sinput", "SOutput", "SpInput", "SpOutput", "TCalDB",
+  "KInput", "KOutput",
+  "MCalDB", "MEInput", "MEOutput", "MInput", "MOutput", "RCalDB", "RInput",
+  "ROutput", "SCalDB", "SInput", "SOutput", "SpInput", "SpOutput", "TCalDB",
   "TInput", "TOutput", "VBInput", "vData_ElectricUnits"
 ]
 
