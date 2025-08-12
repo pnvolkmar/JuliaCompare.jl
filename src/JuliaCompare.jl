@@ -21,12 +21,15 @@ function CloseAllDatabases()
   empty!(open_databases)
   return length(open_databases)
 end
-struct Loc_p
+
+abstract type Location end
+
+struct Loc_p <: Location
   vars::DataFrame
   DATA_FOLDER::String
   name::String
 end
-struct Loc_j
+struct Loc_j <: Location
   vars::DataFrame
   HDF5_path::String
   name::String
@@ -287,7 +290,16 @@ function diff(df1, df2; name1="new", name2="old")
     replace!(df[!, Symbol(name1)], missing => 0)
     replace!(df[!, Symbol(name2)], missing => 0)
   end
-  df.Diff = df[:, Symbol(name1)] .- df[:, Symbol(name2)]
+  if eltype(df[!,name1]) == eltype(df[!,name2]) == String
+    df.Diff = df[:, Symbol(name1)] .!= df[:, Symbol(name2)]
+  elseif eltype(df[!, name1]) <: Number && eltype(df[!, name2]) <: Number
+    df.Diff = df[:, Symbol(name1)] .= df[:, Symbol(name2)]
+  else
+    error("Not able to take differences of these element types: ",
+    eltype(df[!,name1]), " and ",
+    eltype(df[!,name2])
+    )
+  end
   # @transform!(df, :Diff = name1 - name2)
   return (df)
 end
@@ -387,16 +399,187 @@ function arr_set(vname::String, dbname::String, loc::Loc_p)
   return(arr, sets)
 end
 
+# Helper function to add difference calculations
+function add_differences!(df::DataFrame, locs::Vector{<:Location}, diff::Union{Bool, Symbol, Vector{Int}})
+  value_cols = [loc.name for loc in locs]
+  
+  if diff === true || diff === :all
+    # Calculate all pairwise differences
+    for i in 1:length(value_cols)
+      for j in (i+1):length(value_cols)
+        col_name = Symbol("$(value_cols[i])_minus_$(value_cols[j])")
+        df[!, col_name] = df[!, value_cols[i]] .- df[!, value_cols[j]]
+      end
+    end
+    
+  elseif diff === :sequential
+    # Calculate sequential differences (2-1, 3-2, etc.)
+    for i in 2:length(value_cols)
+      col_name = Symbol("$(value_cols[i])_minus_$(value_cols[i-1])")
+      df[!, col_name] = df[!, value_cols[i]] .- df[!, value_cols[i-1]]
+    end
+    
+  elseif diff === :from_first
+    # Calculate differences from the first location
+    for i in 2:length(value_cols)
+      col_name = Symbol("$(value_cols[i])_minus_$(value_cols[1])")
+      df[!, col_name] = df[!, value_cols[i]] .- df[!, value_cols[1]]
+    end
+    
+  elseif isa(diff, Vector{Int})
+    # Calculate specific pairwise differences based on indices
+    if length(diff) != 2
+      error("Vector for diff must contain exactly 2 indices")
+    end
+    i, j = diff[1], diff[2]
+    if i < 1 || i > length(value_cols) || j < 1 || j > length(value_cols)
+      error("Indices in diff vector are out of range")
+    end
+    col_name = Symbol("$(value_cols[i])_minus_$(value_cols[j])")
+    df[!, col_name] = df[!, value_cols[i]] .- df[!, value_cols[j]]
+  end
+  
+  return df
+end
+
+function safe_percent_diff(new_val, old_val)
+  if old_val == 0 && new_val == 0
+    return 0.0  # Both zero: no change = 0%
+  elseif old_val == 0
+    return Inf  # Division by zero (could also return missing or a large number)
+  else
+    return ((new_val - old_val) / old_val) * 100
+  end
+end
+
+function add_percent_differences!(df::DataFrame, locs::Vector{<:Location}, percent_diff::Union{Bool, Symbol, Vector{Int}})
+  value_cols = [loc.name for loc in locs]
+  value_cols_sym = [Symbol(col) for col in value_cols]
+  
+  # Check that all expected columns exist
+  missing_cols = [col for col in value_cols if !hasproperty(df, Symbol(col))]
+  if !isempty(missing_cols)
+    error("Missing columns in DataFrame: $(missing_cols)")
+  end
+  
+  if percent_diff === true || percent_diff === :all
+    # Calculate all pairwise percent differences
+    for i in 1:length(value_cols_sym)
+      for j in (i+1):length(value_cols_sym)
+        col_name = Symbol("$(value_cols[i])_pdiff_$(value_cols[j])")
+        df[!, col_name] = safe_percent_diff.(df[!, value_cols_sym[i]], df[!, value_cols_sym[j]])
+      end
+    end
+    
+  elseif percent_diff === :sequential
+    # Calculate sequential percent differences (2 vs 1, 3 vs 2, etc.)
+    for i in 2:length(value_cols_sym)
+      col_name = Symbol("$(value_cols[i])_pdiff_$(value_cols[i-1])")
+      df[!, col_name] = safe_percent_diff.(df[!, value_cols_sym[i]], df[!, value_cols_sym[i-1]])
+    end
+    
+  elseif percent_diff === :from_first
+    # Calculate percent differences from the first location (baseline)
+    for i in 2:length(value_cols_sym)
+      col_name = Symbol("$(value_cols[i])_pdiff_$(value_cols[1])")
+      df[!, col_name] = safe_percent_diff.(df[!, value_cols_sym[i]], df[!, value_cols_sym[1]])
+    end
+    
+  elseif percent_diff === :relative_to_mean
+    # Calculate percent difference relative to the row-wise mean
+    row_means = mean.(eachrow(df[!, value_cols_sym]))
+    for i in 1:length(value_cols_sym)
+      col_name = Symbol("$(value_cols[i])_pct_diff_mean")
+      df[!, col_name] = safe_percent_diff.(df[!, value_cols_sym[i]], row_means)
+    end
+    
+  elseif isa(percent_diff, Vector{Int})
+    # Calculate specific pairwise percent difference based on indices
+    if length(percent_diff) != 2
+      error("Vector for percent_diff must contain exactly 2 indices")
+    end
+    i, j = percent_diff[1], percent_diff[2]
+    if i < 1 || i > length(value_cols) || j < 1 || j > length(value_cols)
+      error("Indices in percent_diff vector are out of range")
+    end
+    col_name = Symbol("$(value_cols[i])_pdiff_$(value_cols[j])")
+    df[!, col_name] = safe_percent_diff.(df[!, value_cols_sym[i]], df[!, value_cols_sym[j]])
+  end
+  
+  return df
+end
+
+function var(vname::String, loc; 
+                   filter::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
+                   sec::Char="")
+  vname, dbname = lookup_database(vname, loc; sec)
+  arr, sets = arr_set(vname, dbname, loc)
+  # set == set2 ? sets = set : error("Sets Don't Match")
+  if !isempty(filter)
+    arr, sets = subset_array(arr, sets, filter)
+  end
+  df = to_tidy_dataframe(arr, sets)
+  return df
+end
+
+function var(vname::String, locs::Vector{<:Location}; 
+             filter::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
+             sec::Char="",
+             diff::Union{Bool, Symbol, Vector{Int}}=false,
+             pdiff::Union{Bool, Symbol, Vector{Int}}=false)
+  # 
+  arrs = Vector{AbstractArray}()  # or AbstractArray[]
+  sets = Vector{NamedTuple}()     # or NamedTuple[]
+  # 
+  loc_names = [loc.name for loc in locs]
+  if length(unique(loc_names)) != length(loc_names)
+      error("Location names must be unique. Found duplicates: $(loc_names)")
+  end  
+  #
+  for loc in locs
+    vname, dbname = lookup_database(vname, loc; sec) 
+    arr, set = arr_set(vname, dbname, loc)
+    push!(arrs, arr)
+    push!(sets, set)
+  end
+  
+  allequal(sets) ? (set = sets[1]) : error("Sets Don't Match")
+  
+  if !isempty(filter)
+    # Apply filter to all arrays and get the filtered set (same for all)
+    set_filtered = nothing
+    for i in eachindex(arrs)
+      arrs[i], current_set = subset_array(arrs[i], set, filter)
+      if set_filtered === nothing
+        set_filtered = current_set  # Store the first filtered set
+      end
+    end
+    set = set_filtered  # Update set to the filtered version
+  end
+  
+  df = to_tidy_dataframe(arrs, set, loc_names)
+  
+  if diff !== false
+    df = add_differences!(df, locs, diff)
+  end
+  
+  if pdiff !== false
+    df = add_percent_differences!(df, locs, pdiff)
+  end
+  
+  return df  # Don't forget to return the result!
+end
+
 function diff_fast(vname::String, loc1, loc2; 
-                   dimension_filters::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
+                   filter::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
                    sec::Char="")
   vname1, dbname1 = lookup_database(vname, loc1; sec)
   vname2, dbname2 = lookup_database(vname, loc2; sec)
   arr1, set1 = arr_set(vname1, dbname1, loc1)
   arr2, set2 = arr_set(vname2, dbname2, loc2)
   set1 == set2 ? sets = set1 : error("Sets Don't Match")
-  arr1, set1 = subset_array(arr1, sets, dimension_filters)
-  arr2, set2 = subset_array(arr2, sets, dimension_filters)
+  arr1, set1 = subset_array(arr1, sets, filter)
+  arr2, set2 = subset_array(arr2, sets, filter)
   df1 = to_tidy_dataframe(arr1, set1)
   df2 = to_tidy_dataframe(arr2, set2)
   df = diff(df1, df2; name1 = loc1.name, name2 = loc2.name)
@@ -461,9 +644,17 @@ function plot_diff(data; dim="ECC", num=10, title="New Plot")
   display(fig)
 end
 
-function plot_sets(data; dim="ECC", num=10, title="New Plot")
+function plot_sets(data::DataFrame; 
+  col::Union{String,Symbol} = "", 
+  dim::Union{String,Symbol}="ECC", 
+  num::Integer=10, 
+  title::String="New Plot")
   df = deepcopy(data)
-  l = last(names(df))
+  if col == ""
+    l = last(names(df))
+  else 
+    l = col
+  end
   l_symbol = Symbol(l)
   @rsubset! df $l != 0
   df2 = @by(df, [Symbol(dim)], :Value = sum(abs.($l)))
@@ -483,6 +674,40 @@ function plot_sets(data; dim="ECC", num=10, title="New Plot")
   Legend(fig[1, 2], elements, labels, dim)
   display(fig)
 end
+
+function plot_lines(df, cols::AbstractVector{<:Union{Symbol,String,Location}};
+  title = "")
+  
+  if typeof(cols[1]) <: Location
+    cols = [Symbol(loc.name) for loc in cols]
+  elseif typeof(cols[1]) == String
+    cols = [Symbol(col) for col in cols]
+  end
+  
+  dfg = combine(groupby(df, :Year), cols .=> sum, renamecols=false)
+  dfg = stack(dfg, cols)
+  sort!(dfg, :Year)
+  
+  fig = Figure()
+  ax = Axis(fig[1, 1], 
+           xlabel = "Year",
+           ylabel = "Tonnes of Pollutants", 
+           title = "TotPol across versions")
+  
+  # Plot each group separately
+  for var in unique(dfg.variable)
+    subset_df = filter(row -> row.variable == var, dfg)
+    lines!(ax, subset_df.Year, subset_df.value, 
+           label = var,
+           linewidth = 2,
+           alpha = 0.5)
+  end
+  
+  axislegend(ax, position = :lt)  # :lt = left top
+  
+  return fig
+end
+
 
 function comparedata(data, data_b, fnames)
   df = DataFrame()
@@ -915,6 +1140,93 @@ function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
   return df
 end
 
+function to_tidy_dataframe(arrays::Vector{<:AbstractArray}, sets::NamedTuple, value_names::Vector{String})
+  # Check that we have at least one array
+  if isempty(arrays)
+    error("At least one array must be provided")
+  end
+  
+  # Check that all arrays have the same dimensions
+  ref_size = size(arrays[1])
+  ref_ndims = ndims(arrays[1])
+  
+  for (i, arr) in enumerate(arrays)
+    if size(arr) != ref_size
+      error("Array $i has size $(size(arr)), but expected $(ref_size)")
+    end
+    if ndims(arr) != ref_ndims
+      error("Array $i has $(ndims(arr)) dimensions, but expected $(ref_ndims)")
+    end
+  end
+  
+  # Check that number of value names matches number of arrays
+  if length(value_names) != length(arrays)
+    error("Number of value names ($(length(value_names))) doesn't match number of arrays ($(length(arrays)))")
+  end
+  
+  # Get the dimension names
+  dim_names = collect(propertynames(sets))
+  
+  # Check that dimensions match the sets
+  if ref_ndims != length(dim_names)
+    error("Number of dimensions in arrays ($(ref_ndims)) doesn't match number of sets ($(length(dim_names)))")
+  end
+  
+  # Create arrays for each dimension value
+  values_by_dim = []
+  for dim_name in dim_names
+    push!(values_by_dim, getproperty(sets, dim_name))
+  end
+  
+  # Create the result DataFrame
+  df = DataFrame()
+  
+  # Use Base.product to iterate through all combinations of indices
+  indices_iter = Iterators.product([1:length(vals) for vals in values_by_dim]...)
+  
+  # Initialize arrays to hold the data
+  n_elements = length(arrays[1])
+  dim_columns = [Vector{eltype(values_by_dim[i])}(undef, n_elements) for i in 1:length(dim_names)]
+  
+  # Initialize value columns for each array
+  value_columns = [Vector{eltype(arr)}(undef, n_elements) for arr in arrays]
+  
+  # Fill in the data
+  for (i, idx) in enumerate(indices_iter)
+    # Get the dimension values (same for all arrays)
+    for (d, dim_idx) in enumerate(idx)
+      dim_columns[d][i] = values_by_dim[d][dim_idx]
+    end
+    
+    # Get the values from each array
+    for (a, arr) in enumerate(arrays)
+      value_columns[a][i] = arr[idx...]
+    end
+  end
+  
+  # Add the dimension columns to the DataFrame
+  for (i, name) in enumerate(dim_names)
+    df[!, Symbol(name)] = dim_columns[i]
+  end
+  
+  # Add the value columns with custom names
+  for (i, value_name) in enumerate(value_names)
+    df[!, Symbol(value_name)] = value_columns[i]
+  end
+  
+  # Parse Year column if it exists
+  if :Year ∈ dim_names
+    df.Year = parse.(Int64, df.Year)
+  end
+  
+  return df
+end
+
+# Convenience method with default value names
+function to_tidy_dataframe(arrays::Vector{<:AbstractArray}, sets::NamedTuple)
+  value_names = ["Value_$i" for i in 1:length(arrays)]
+  return to_tidy_dataframe(arrays, sets, value_names)
+end
 """
     ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
 
