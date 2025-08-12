@@ -399,7 +399,7 @@ function arr_set(vname::String, dbname::String, loc::Loc_p)
   return(arr, sets)
 end
 
-# Helper function to add difference calculations
+
 function add_differences!(df::DataFrame, locs::Vector{<:Location}, diff::Union{Bool, Symbol, Vector{Int}})
   value_cols = [loc.name for loc in locs]
   
