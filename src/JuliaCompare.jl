@@ -668,8 +668,7 @@ function plot_sets(data::DataFrame;
   fig = Figure()
   ax = Axis(fig[1, 1]; title=title)
   barplot!(ax, df.Year, df[:, l], stack=levelcode.(cats), color=colors[levelcode.(cats)])
-  labels = levels(cats)
-  # return (labels)
+  labels = String.(levels(cats))   # return (labels)
   elements = [PolyElement(polycolor=colors[i]) for i in 1:length(labels)]
   Legend(fig[1, 2], elements, labels, dim)
   display(fig)
