@@ -629,7 +629,10 @@ function tops(df; dim="ECC", num=10)
   return (lst)
 end
 
-function plot_diff(data; dim="ECC", num=10, title="New Plot")
+function plot_diff(data; dim="ECC", num=10, 
+  title::String = "",
+  units::String = "")
+
   dim = dim isa String ? dim : string(dim)
   df = deepcopy(data)
   ss = tops(df; dim, num)
@@ -639,7 +642,7 @@ function plot_diff(data; dim="ECC", num=10, title="New Plot")
   cats = categorical(df[:, dim])
   colors = distinguishable_colors(length(unique(cats)))
   fig = Figure()
-  ax = Axis(fig[1, 1]; title=title)
+  ax = Axis(fig[1, 1]; title=title, ylabel = units, xlabel = "Year")
   barplot!(ax, df.Year, df.Diff, stack=levelcode.(cats), color=colors[levelcode.(cats)])
   labels = levels(cats)
   # return (labels)
@@ -679,7 +682,8 @@ function plot_sets(data::DataFrame;
 end
 
 function plot_lines(df, cols::AbstractVector{<:Union{Symbol,String,Location}};
-  title = "")
+  title::String = "",
+  units::String = "")
   
   if typeof(cols[1]) <: Location
     cols = [Symbol(loc.name) for loc in cols]
@@ -694,8 +698,8 @@ function plot_lines(df, cols::AbstractVector{<:Union{Symbol,String,Location}};
   fig = Figure()
   ax = Axis(fig[1, 1], 
            xlabel = "Year",
-           ylabel = "Tonnes of Pollutants", 
-           title = "TotPol across versions")
+           ylabel = units, 
+           title = title)
   
   # Plot each group separately
   for var in unique(dfg.variable)
