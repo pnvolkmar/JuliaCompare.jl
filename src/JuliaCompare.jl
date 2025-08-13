@@ -655,7 +655,8 @@ function plot_sets(data::DataFrame;
   col::Union{String,Symbol} = "", 
   dim::Union{String,Symbol}="ECC", 
   num::Integer=10, 
-  title::String="New Plot")
+  title::String = "",
+  units::String = "")
   df = deepcopy(data)
   if col == ""
     l = last(names(df))
@@ -673,7 +674,7 @@ function plot_sets(data::DataFrame;
   cats = categorical(df[:, dim])
   colors = distinguishable_colors(length(unique(cats)))
   fig = Figure()
-  ax = Axis(fig[1, 1]; title=title)
+  ax = Axis(fig[1, 1]; title=title, ylabel = units, xlabel = "Year")
   barplot!(ax, df.Year, df[:, l], stack=levelcode.(cats), color=colors[levelcode.(cats)])
   labels = String.(levels(cats))   # return (labels)
   elements = [PolyElement(polycolor=colors[i]) for i in 1:length(labels)]
