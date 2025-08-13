@@ -218,7 +218,7 @@ end
 
 const Canada = ["ON", "QC", "BC", "AB", "MB",
   "SK", "NB", "NS", "NL",
-  "PI", "YT", "NT", "NV"
+  "PE", "YT", "NT", "NU"
 ]
 
 function var(needle, vars, DATA_FOLDER)
