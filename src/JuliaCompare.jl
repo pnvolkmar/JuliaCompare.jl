@@ -50,21 +50,69 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
 
   code_path = joinpath(CODE_FOLDER, join([cfilename, ".src"]))
   df = CSV.read(code_path, DataFrame, delim="\t", comment="*", header=[:x])
+  
+  # Find all "Open Input" lines to track database changes
+  open_input_lines = findall(occursin.(r"Open.*\.dba", df.x))
+  println(open_input_lines)
+  # Extract database names from "Open Input" lines
+  db_names = String[]
+  for line_idx in open_input_lines
+    line = df.x[line_idx]
+    # Extract database name between quotes
+   match_result = match(r"Open\s+\w+\d*\s+\"([^\"]+)\"", line)
+   println(match_result)
+    if match_result !== nothing
+      db_name = replace(match_result.captures[1], ".dba" => "")
+      push!(db_names, db_name)
+    end
+  end
+  
+  # Find variable definition blocks
   a = occursin.("Define Variable", df.x)
-  e = findall(a)
-  e = reshape(e, 2, :)
-  e[1,:] .+= 1
-  e[2,:] .-= 1
-  rows = map(:,e[1,:],e[2,:])
-  rows = map(collect,rows)
-  rows = vcat(rows...)
-  df = df[rows, :]
-  df = df[Not(occursin.(r"^\s*$", df.x)), :] # remove blank rows
+  define_var_lines = findall(a)
+  end_define_lines = findall(occursin.("End Define Variable", df.x))
+  setdiff!(define_var_lines, end_define_lines)
+  
+  # Pair up Define Variable with End Define Variable
+  var_blocks = []
+  for i in 1:length(define_var_lines)
+    start_line = define_var_lines[i] + 1
+    end_line = end_define_lines[i] - 1
+    
+    # Find which database this block belongs to
+    current_db = cfilename  # default
+    for (j, open_line) in enumerate(open_input_lines)
+      if open_line < define_var_lines[i] && j <= length(db_names)
+        current_db = db_names[j]
+      end
+    end
+    
+    push!(var_blocks, (start_line:end_line, current_db))
+  end
+  
+  # Extract all variable definition rows with their corresponding databases
+  all_rows = Int[]
+  db_assignments = String[]
+  
+  for (rows, db_name) in var_blocks
+    for row in rows
+      push!(all_rows, row)
+      push!(db_assignments, db_name)
+    end
+  end
+  
+  # Filter dataframe to only variable definition rows
+  df_vars = df[all_rows, :]
+  df_vars = df_vars[Not(occursin.(r"^\s*$", df_vars.x)), :] # remove blank rows
 
-  # Identify dimensions of variable from definition lines
-  dd1 = findfirst.(''', df.x)
-  dd1 = ifelse.(isnothing.(dd1), length.(df.x), dd1)
-  name_dim = SubString.(df.x, 1, dd1 .- 1)
+  # Filter corresponding database assignments
+  non_empty_mask = .!occursin.(r"^\s*$", df[all_rows, :x])
+  db_assignments = db_assignments[non_empty_mask]
+  
+  # Rest of your existing parsing logic
+  dd1 = findfirst.(''', df_vars.x)
+  dd1 = ifelse.(isnothing.(dd1), length.(df_vars.x), dd1)
+  name_dim = SubString.(df_vars.x, 1, dd1 .- 1)
   name_dim = replace.(name_dim, r"\s" => "")
   name_dim = replace.(name_dim, ")" => "")
 
@@ -75,8 +123,8 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   vars = string.(SubString.(name_dim, 1, ss1 .- 1))
 
   # Identify description and units of variable from definition lines
-  dd2 = findlast.(''', df.x)
-  desc_units = SubString.(df.x, dd1 .+ 1, dd2 .- 1)
+  dd2 = findlast.(''', df_vars.x)
+  desc_units = SubString.(df_vars.x, dd1 .+ 1, dd2 .- 1)
   dd3 = findfirst.('(', desc_units)
   dd4 = findlast.(')', desc_units)
   dd4 = ifelse.(isnothing.(dd4), length.(desc_units), dd4)
@@ -121,7 +169,7 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
 
   dim_pairs = [[makepairs(d, cfile, e2020db) for d in ds] for ds in split_dims]
 
-  DataFrame(Variable=vars, Dimensions=dims, Description=desc, Database=cfilename, DPairs=dim_pairs)
+  DataFrame(Variable=vars, Dimensions=dims, Description=desc, Database=db_assignments, DPairs=dim_pairs)
 end
 
 function list_vars(DATA_FOLDER, db_files)
