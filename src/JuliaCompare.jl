@@ -364,6 +364,7 @@ function arr_set(vname::String, dbname::String, loc::Loc_j)
     sets = ReadSets(loc.HDF5_path, string(dbname,"/", vname))
     if :Unit ∈ keys(sets)
       UnCode = ReadDisk(loc.HDF5_path, "EGInput/UnCode")
+      UnCode[UnCode .== "Null"] .= ""
       sets.Unit[:] = UnCode[:]
     end
   else
@@ -522,7 +523,7 @@ function var(vname::String, loc;
   if !isempty(filter)
     arr, sets = subset_array(arr, sets, filter)
   end
-  df = to_tidy_dataframe(arr, sets)
+  df = to_tidy_dataframe(arr, sets; Value = vname)
   return df
 end
 
@@ -547,21 +548,39 @@ function var(vname::String, locs::Vector{<:Location};
     push!(sets, set)
   end
   
-  allequal(sets) ? (set = sets[1]) : error("Sets Don't Match")
+  if allequal(sets) 
+    (set = sets[1]) 
   
-  if !isempty(filter)
-    # Apply filter to all arrays and get the filtered set (same for all)
-    set_filtered = nothing
-    for i in eachindex(arrs)
-      arrs[i], current_set = subset_array(arrs[i], set, filter)
-      if set_filtered === nothing
-        set_filtered = current_set  # Store the first filtered set
+    if !isempty(filter)
+      # Apply filter to all arrays and get the filtered set (same for all)
+      set_filtered = nothing
+      for i in eachindex(arrs)
+        arrs[i], current_set = subset_array(arrs[i], set, filter)
+        if set_filtered === nothing
+          set_filtered = current_set  # Store the first filtered set
+        end
+      end
+      set = set_filtered  # Update set to the filtered version
+    end
+    
+    df = to_tidy_dataframe(arrs, set, loc_names)
+  else
+    @warn "Sets Don't Match Before Filter" 
+    if !isempty(filter)
+      for i in eachindex(arrs)
+        arrs[i], sets[i] = subset_array(arrs[i], sets[i], filter)
       end
     end
-    set = set_filtered  # Update set to the filtered version
+    if allequal(sets) 
+      println("Sets match After Filter")
+      set = sets[1]
+      df = to_tidy_dataframe(arrs, set, loc_names)
+    else 
+      @warn "Sets still don't match after filter"
+      dfs = [to_tidy_dataframe(arrs[i],sets[i]; Value = loc_names[i]) for i in eachindex(arrs)]
+      df = join_vars(dfs...)
+    end
   end
-  
-  df = to_tidy_dataframe(arrs, set, loc_names)
   
   if diff !== false
     df = add_differences!(df, locs, diff)
@@ -707,7 +726,7 @@ function plot_lines(df, cols::AbstractVector{<:Union{Symbol,String,Location}};
     subset_df = filter(row -> row.variable == var, dfg)
     lines!(ax, subset_df.Year, subset_df.value, 
            label = var,
-           linewidth = 2,
+           linewidth = 5,
            alpha = 0.5)
   end
   
@@ -1097,8 +1116,9 @@ df = to_tidy_dataframe(filtered_array, filtered_sets)
 ```
 """
 
-function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
+function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple; Value::Union{Symbol,String}=:Value)
   # Get the dimension names
+  Value = Symbol(Value)
   dim_names = collect(propertynames(sets))
   # Check that dimensions match
   if ndims(array) != length(dim_names)
@@ -1139,7 +1159,7 @@ function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple)
   end
   
   # Add the value column
-  df[!, :Value] = value_column
+  df[!, Value] = value_column
   
   if :Year ∈ dim_names
     df.Year = parse.(Int64, df.Year)

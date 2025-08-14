@@ -29,45 +29,74 @@ filter = Dict{Symbol,Any}()
 push!(filter, :Area => Canada, :Year => string.(1986:2050))
 ECC = M.ReadDisk(loc2.HDF5_path, "E2020DB/ECCKey")
 push!(filter, :ECC => ECC[occursin.("Foreign", ECC) .== false])
-
-omm = copy(filter)
-push!(omm, :ECC => "OtherMetalMining", :EC => "OtherMetalMining")
-push!(omm, :Poll => "CO2", :Year => string.(2020:2050))
-push!(omm, :Area => ["NU"])
-push!(omm, :FuelEP => ["Diesel","Gasoline", "Kerosene"], :Fuel => ["Diesel","Gasoline", "Kerosene"])
-push!(omm, :Enduse => ["OffRoad", "Heat"])
-push!(omm, :Tech => ["OffRoad", "Oil"])
+ECC[occursin.("Paper", ECC) .== true]
+ppm = copy(filter)
+push!(ppm, :ECC => "PulpPaperMills", :EC => "PulpPaperMills")
+# push!(ppm, :Area => ["QC"])
+# push!(ppm, :Poll => "CO2", :Year => string.(2023:2024))
+# push!(ppm, :FuelEP => ["Diesel","Gasoline", "Kerosene"], :Fuel => ["Diesel","Gasoline", "Kerosene"])
+# push!(ppm, :Enduse => ["OffRoad", "Heat"])
+# push!(ppm, :Tech => ["OffRoad", "Oil"])
 
 ################################################################################
 # Analysis of variables: Overview ##############################################
 ################################################################################
 
-TotPol = J.var("TotPol", locs; filter=omm, sec, diff = true, pdiff = true) # 
-J.plot_sets(TotPol; col = :Pine_minus_Redwood, dim="Area", title = "Differences in OtherMetalMining TotPol")
+TotPol = J.var("TotPol", locs; filter=ppm, sec, diff = true, pdiff = true) # 
+J.plot_sets(TotPol; col = :Pine_pdiff_Redwood, dim="Area", title = "Differences in PulpPaperMills TotPol")
+J.plot_sets(TotPol; col = :Pine_minus_Redwood, dim="Area", title = "Differences in PulpPaperMills TotPol")
+J.plot_sets(TotPol; col = :Redwood, dim="Poll", title = "Redwood PulpPaperMills TotPol")
+J.plot_lines(TotPol, locs; title = "TotPol for QC PulpPaperMills", units = "Tonnes of Emissions")
 
+@rsubset TotPol :Pine_pdiff_Redwood < -50 # Black Carbon historic values aren't present in Pine
+@rsubset TotPol :Area == "QC" abs(:Pine_minus_Redwood) > 0.1 :Year == 2050
     # TotPol[ecc,poll,area] = EnPol[ecc,poll,area]+NcPol[ecc,poll,area]+
     #   MEPol[ecc,poll,area]+VnPol[ecc,poll,area]+FlPol[ecc,poll,area]+
     #   FuPol[ecc,poll,area]+ORMEPol[ecc,poll,area]+SqPol[ecc,poll,area]
-EnPol = J.var("EnPol", locs; filter=omm, sec) # Problem
-NcPol = J.var("NcPol", locs; filter=omm, sec) # 
-MEPol = J.var("MEPol", locs; filter=omm, sec) # 
-VnPol = J.var("VnPol", locs; filter=omm, sec) # 
-FlPol = J.var("FlPol", locs; filter=omm, sec) # 
-FuPol = J.var("FuPol", locs; filter=omm, sec) # 
-ORMEPol = J.var("ORMEPol", locs; filter=omm, sec) # 
-SqPol = J.var("SqPol", locs; filter=omm, sec) # 
+CgFPol = J.var("CgFPol", locs; filter=ppm, sec, diff = true, pdiff = true) # Problem
+@rsubset! CgFPol :Year == 2029 :Area == "QC" :Pine_minus_Redwood != 0
+sort!(CgFPol, :Pine_pdiff_Redwood)
+push!(ppm, :FuelEP => ["Biomass", "HFO"], :Poll => "SOX", :Area => "QC", :Year => string.(1985:2050))
+CgFPol = J.var("CgFPol", locs; filter=ppm, sec, diff = true, pdiff = true) # Problem
+J.plot_lines(CgFPol, locs)
+push!(ppm, :Year => string.(2019:2020))
 
-EuFPol = J.var("EuFPol", locs; filter=omm, sec) # Problem
-@rsubset! EuFPol abs(:Diff) >= 1
+UnSector = J.var("UnSector", loc1; filter=ppm, sec) # Problem
+UnArea = J.var("UnArea", loc1; filter=ppm, sec) # Problem
+Units = J.join_vars(UnSector, UnArea)
+@rsubset! Units :UnSector == "PulpPaperMills" :UnArea == "ON"
+push!(ppm, :Unit => unique(Units.Unit))
+# CgFPol[fuelep,ecc,poll,area] = CgFPol[fuelep,ecc,poll,area]+
+# UnPolGross[unit,fuelep,poll]*(1-UnZeroFr[unit,fuelep,poll])
+UnZeroFr = J.var("UnZeroFr", locs; filter=ppm, sec, diff = true, pdiff = true) # Problem
+describe(UnZeroFr)
+idx = findfirst(vars.Variable .== "UnPolGross")
+vars[idx,:Database] = "egoutput3"
+UnPolGross = J.var("UnPolGross", locs; filter=ppm, sec, diff = true, pdiff = true) # Problem
+@rsubset UnPolGross abs(:Pine_pdiff_Redwood) > 0.1
+@by UnPolGross [:Year, :FuelEP] :Pine = sum(:Pine) :Redwood = sum(:Redwood)
+
+set1 == set2
+keys(set1) == keys(set2)
+set1[:Unit] == set2[:Unit]
+length(set1[:Unit])
+length(set2[:Unit])
+
+UnPolGross1 = J.var("UnPolGross", loc)
+NcPol = J.var("NcPol", locs; filter=ppm, sec) # 
+MEPol = J.var("MEPol", locs; filter=ppm, sec) # 
+VnPol = J.var("VnPol", locs; filter=ppm, sec) # 
+FlPol = J.var("FlPol", locs; filter=ppm, sec) # 
+FuPol = J.var("FuPol", locs; filter=ppm, sec) # 
+ORMEPol = J.var("ORMEPol", locs; filter=ppm, sec) # 
+SqPol = J.var("SqPol", locs; filter=ppm, sec) # 
+
+EuFPol = J.var("EuFPol", locs; filter=ppm, sec) # Problem
+@rsubset! EuFPol :Pine != :Redwood
 J.plot_diff(EuFPol, dim = "FuelEP"; title = "EuFPol OtherMetalMining CO2, BC,ON,QC, by FuelEP")
 
-push!(omm, :Area => "ON", :Year => string.(2023:2029), :Enduse => "ommRoad")
-push!(omm, :Tech => "ommRoad")
-push!(omm, :Enduse => "ommRoad")
-
-Polute = J.var("Polute", locs; filter=omm, sec = sec) # this is fine
-J.add_pdiff!(Polute)
-@rsubset! Polute abs(:PDiff) != 0
+Polute = J.var("Polute", locs; filter=ppm, sec = sec, diff = true, pdiff = true) # this is fine
+@rsubset! Polute abs(:Pine_pdiff_Redwood) != 0
 J.plot_diff(Polute, dim = "Enduse")
 
 i = findall(vars.Variable .== "POCA" .&& first.(vars.Database) .== sec)
@@ -75,37 +104,37 @@ vars[i,:Database] .= sec*"Output2"
 # Polute[enduse,fuelep,ec,poll,area] = EuDem[enduse,fuelep,ec,area]*
 #     POCA[enduse,fuelep,ec,poll,area]+xPolute[enduse,fuelep,ec,poll,area]
 
-POCA = J.var("POCA", locs; filter=omm, sec) # 
-EuDem = J.var("EuDem", locs; filter=omm, sec) # Problem
+POCA = J.var("POCA", locs; filter=ppm, sec) # 
+EuDem = J.var("EuDem", locs; filter=ppm, sec) # Problem
 @rsubset! EuDem :Diff != 0
 J.add_pdiff!(EuDem)
 @rsubset EuDem :Area == "BC" :Year == 2050
-xPolute = J.var("xPolute", locs; filter=omm, sec) # 
+xPolute = J.var("xPolute", locs; filter=ppm, sec) # 
 J.add_pdiff!(EuDem)
 @rsubset! EuDem abs(:PDiff) != 0
 
-EuDemF = J.var("EuDemF", locs; filter=omm, sec) # not on db
+EuDemF = J.var("EuDemF", locs; filter=ppm, sec) # not on db
 
 # EuDemF[enduse,fuel,ecc,area] = sum(Dmd[enduse,tech,ec,area]*
 # DmFrac[enduse,fuel,tech,ec,area] for tech in Techs)
-Dmd = J.var("Dmd", locs; filter=omm, sec) # problem
+Dmd = J.var("Dmd", locs; filter=ppm, sec) # problem
 @rsubset! Dmd :Diff != 0 :Tech == "ommRoad"
 J.add_pdiff!(Dmd)
 @rsubset Dmd :PDiff != 0
-DmFrac = J.var("DmFrac", locs; filter=omm, sec) # fine
+DmFrac = J.var("DmFrac", locs; filter=ppm, sec) # fine
 @rsubset! DmFrac :Diff != 0
 J.add_pdiff!(DmFrac)
-zoom = copy(omm)
+zoom = copy(ppm)
 push!(zoom, :Area => "QC", :Year => "2050")
 pop!(zoom, :Fuel)
 DmFrac = J.var("DmFrac", locs; filter=zoom, sec) # 
-DmFrac = J.var("DmFrac", spr_base, tan_base; filter=omm, sec) # 
+DmFrac = J.var("DmFrac", spr_base, tan_base; filter=ppm, sec) # 
 @rsubset DmFrac :Area == "BC" :Fuel == "Diesel"
 
 @rsubset! DmFrac :Tanoak != 0
 xDmFrac = J.var("xDmFrac", locs; filter=zoom, sec) # 
 @rsubset! xDmFrac :Tanoak != 0
-DmFracMin = J.var("DmFracMin", locs; filter=omm, sec) # 
+DmFracMin = J.var("DmFracMin", locs; filter=ppm, sec) # 
 @rsubset! DmFracMin :Tanoak != 0
 @rsubset DmFracMin :Area == "QC" :Fuel == "Biodiesel"
 @rsubset DmFracMin :Area == "BC" :Fuel == "Biodiesel"
@@ -113,14 +142,14 @@ DmFracMax = J.var("DmFracMax", locs; filter=zoom, sec) #
 @rsubset DmFracMax :Tanoak != 0 :Diff != 0
 
 # @. Dmd = Dmd-EE
-EE = J.var("EE", locs; filter=omm, sec) # 
+EE = J.var("EE", locs; filter=ppm, sec) # 
 @rsubset
 # @. Dmd = Dmd-DSMEU
-DSMEU = J.var("DSMEU", locs; filter=omm, sec) # 
+DSMEU = J.var("DSMEU", locs; filter=ppm, sec) # 
 # Dmd[enduse,tech,ec,area] = Dmd[enduse,tech,ec,area]+
 #                            SqDmd[tech,ec,area]*SqEUTechMap[enduse,tech]
-SqDmd = J.var("SqDmd", locs; filter=omm, sec) # 
-SqEUTechMap = J.var("SqEUTechMap", locs; filter=omm, sec) # 
+SqDmd = J.var("SqDmd", locs; filter=ppm, sec) # 
+SqEUTechMap = J.var("SqEUTechMap", locs; filter=ppm, sec) # 
 #
 # @finite_math Dmd[enduse,tech,ec,area] = DER[enduse,tech,ec,area]*
 # UMS[enduse,tech,ec,area]*CERSM[enduse,ec,area]*
@@ -128,110 +157,110 @@ SqEUTechMap = J.var("SqEUTechMap", locs; filter=omm, sec) #
 # (TSLoad[enduse,ec,area]*
 # (DDay[enduse,area]/DDayNorm[enduse,area])^DDCoefficient[enduse,ec,area]+
 # (1.0-TSLoad[enduse,ec,area]))
-DER = J.var("DER", locs; filter=omm, sec) # Problem
-J.add_pdiff!(DER)
-UMS = J.var("UMS", locs; filter=omm, sec)
-CERSM = J.var("CERSM", locs; filter=omm, sec)
-CUF = J.var("CUF", locs; filter=omm, sec)
-WCUF = J.var("WCUF", locs; filter=omm, sec)
-RPEI = J.var("RPEI", locs; filter=omm, sec)
-TSLoad = J.var("TSLoad", locs; filter=omm, sec)
-DDay = J.var("DDay", locs; filter=omm, sec)
-DDayNorm = J.var("DDayNorm", locs; filter=omm, sec)
-DDCoefficient = J.var("DDCoefficient", locs; filter=omm, sec)
-EEImpact = J.var("EEImpact", locs; filter=omm, sec)
-EESat = J.var("EESat", locs; filter=omm, sec)
-xDmd = J.var("xDmd", locs; filter=omm, sec)
-xDmdTrend = J.var("xDmdTrend", locs; filter=omm, sec)
+DER = J.var("DER", locs; filter=ppm, sec, pdiff = true) # Problem
+@rsubset DER :Pine_pdiff_Redwood != 0
+UMS = J.var("UMS", locs; filter=ppm, sec)
+CERSM = J.var("CERSM", locs; filter=ppm, sec)
+CUF = J.var("CUF", locs; filter=ppm, sec)
+WCUF = J.var("WCUF", locs; filter=ppm, sec)
+RPEI = J.var("RPEI", locs; filter=ppm, sec)
+TSLoad = J.var("TSLoad", locs; filter=ppm, sec)
+DDay = J.var("DDay", locs; filter=ppm, sec)
+DDayNorm = J.var("DDayNorm", locs; filter=ppm, sec)
+DDCoefficient = J.var("DDCoefficient", locs; filter=ppm, sec)
+EEImpact = J.var("EEImpact", locs; filter=ppm, sec)
+EESat = J.var("EESat", locs; filter=ppm, sec)
+xDmd = J.var("xDmd", locs; filter=ppm, sec)
+xDmdTrend = J.var("xDmdTrend", locs; filter=ppm, sec)
 
-DERRRExo = J.var("DERRRExo", locs; filter=omm, sec)
-PERRRExo = J.var("PERRRExo", locs; filter=omm, sec)
-PERRRExo = J.var("PERRRExo", locs; filter=omm, sec)
+DERRRExo = J.var("DERRRExo", locs; filter=ppm, sec)
+PERRRExo = J.var("PERRRExo", locs; filter=ppm, sec)
+PERRRExo = J.var("PERRRExo", locs; filter=ppm, sec)
 i = findall(vars.Variable .∈ Ref(["DERV", "DERAV"]) .&& first.(vars.Database) .== sec)
 vars[i,:Database] .= sec*"Output2"
-DERV = J.var("DERV", locs; filter=omm, sec) # Problem
+DERV = J.var("DERV", locs; filter=ppm, sec) # Problem
 select!(DERV, Not([:Enduse, :Tech]))
 J.add_pdiff!(DERV)
 @rsubset DERV :Vintage == "Vintage 1"
-StockAdjustment = J.var("StockAdjustment", locs; filter=omm, sec) # fine
-DERAV = J.var("DERAV", locs; filter=omm, sec)
-DERA   = J.var("DERA", locs; filter=omm, sec) # problem
+StockAdjustment = J.var("StockAdjustment", locs; filter=ppm, sec) # fine
+DERAV = J.var("DERAV", locs; filter=ppm, sec)
+DERA   = J.var("DERA", locs; filter=ppm, sec) # problem
 J.add_pdiff(DERA)
 @rsubset DERA isnan(:Tanoak) :Year == 2020
 #   @. DERA = DERAPC+DERAP+DERAD+DERARC
-DERAPC = J.var("DERAPC", locs; filter=omm, sec) #  problem
+DERAPC = J.var("DERAPC", locs; filter=ppm, sec) #  problem
 J.add_pdiff(DERAPC)
-DERAP = J.var("DERAP", locs; filter=omm, sec) # missing from Tanoak
-DERAD = J.var("DERAD", locs; filter=omm, sec) # problem
+DERAP = J.var("DERAP", locs; filter=ppm, sec) # missing from Tanoak
+DERAD = J.var("DERAD", locs; filter=ppm, sec) # problem
 J.add_pdiff(DERAD)
-DERARC = J.var("DERARC", locs; filter=omm, sec) # fine
+DERARC = J.var("DERARC", locs; filter=ppm, sec) # fine
 
-RetroSwExo = J.var("RetroSwExo", locs; filter=omm, sec)
+RetroSwExo = J.var("RetroSwExo", locs; filter=ppm, sec)
 
 #   @. @finite_math DERAPC = (PERAPC+PERADSt)/DEE
-PERAPC = J.var("PERAPC", locs; filter=omm, sec) # big problem: Missing in Tanoak
+PERAPC = J.var("PERAPC", locs; filter=ppm, sec) # big problem: Missing in Tanoak
 J.add_pdiff!(PERAPC)
-PERADSt = J.var("PERADSt", locs; filter=omm, sec) # fine
-DEE = J.var("DEE", locs; filter=omm, sec) # fine
+PERADSt = J.var("PERADSt", locs; filter=ppm, sec) # fine
+DEE = J.var("DEE", locs; filter=ppm, sec) # fine
 J.add_pdiff!(DEE)
 
 # process additions from production capacity (PERAPC)
 # @finite_math PERAPC[enduse,tech,ec,area] = EUPCAPC[enduse,tech,New,ec,area]*
 #     DSt[enduse,ec,area]/PEE[enduse,tech,ec,area]
-push!(omm, :Age => "New")
-EUPCAPC = J.var("EUPCAPC", locs; filter=omm, sec) # big problem
+push!(ppm, :Age => "New")
+EUPCAPC = J.var("EUPCAPC", locs; filter=ppm, sec) # big problem
 J.add_pdiff(EUPCAPC)
-DSt = J.var("DSt", locs; filter=omm, sec) # 
-PEE = J.var("PEE", locs; filter=omm, sec) # 
+DSt = J.var("DSt", locs; filter=ppm, sec) # 
+PEE = J.var("PEE", locs; filter=ppm, sec) # 
 J.add_pdiff(PEE)
 # EUPCAPC[enduse,tech,New,ec,area] = PCA[New,ecc,area]*MMSF[enduse,tech,ec,area]
-PCA = J.var("PCA", locs; filter=omm, sec) # 
-age = pop!(omm, :Age)
-PCA_mid = J.var("PCA", locs; filter=omm, sec) # 
+PCA = J.var("PCA", locs; filter=ppm, sec) # 
+age = pop!(ppm, :Age)
+PCA_mid = J.var("PCA", locs; filter=ppm, sec) # 
 # PCA[New,ecc,area] = (PCPrior[ecc,area]*(ECGR[ecc,area]+GRPGR[area]))+PCR[Old,ecc,area]
-push!(omm, :Age => "Old")
-PC = J.var("PC", locs; filter=omm, sec) # about 1/4 of the problem
+push!(ppm, :Age => "Old")
+PC = J.var("PC", locs; filter=ppm, sec) # about 1/4 of the problem
 J.add_pdiff!(PC)
-ECGR = J.var("ECGR", locs; filter=omm, sec) # a lot of problem
+ECGR = J.var("ECGR", locs; filter=ppm, sec) # a lot of problem
 J.add_pdiff(ECGR)
-GRPGR = J.var("GRPGR", locs; filter=omm, sec) # fine
-PCR = J.var("PCR", locs; filter=omm, sec) # fine
+GRPGR = J.var("GRPGR", locs; filter=ppm, sec) # fine
+PCR = J.var("PCR", locs; filter=ppm, sec) # fine
 J.add_pdiff(PCR)
 #     @finite_math ECGR[ecc,area] = (PC[ecc,area]-PCPrior[ecc,area])/PCPrior[ecc,area]-GRPGR[area]
-# PCMin = J.var("PCMin", locs; filter=omm, sec) # temp var
-xPC = J.var("xPC", locs; filter=omm, sec) # problem
+# PCMin = J.var("PCMin", locs; filter=ppm, sec) # temp var
+xPC = J.var("xPC", locs; filter=ppm, sec) # problem
 # @finite_math xPC[ecc,area] = Driver[ecc,area]/xECUF[ecc,area]   
-Driver = J.var("Driver", locs; filter=omm, sec) # 
+Driver = J.var("Driver", locs; filter=ppm, sec) # 
 J.add_pdiff!(Driver)
 sort!(Driver, :PDiff)
-xECUF = J.var("xECUF", locs; filter=omm, sec) # 
+xECUF = J.var("xECUF", locs; filter=ppm, sec) # 
 # Driver[ecc,area] = Driver[ecc,area]*DriverMultiplier[ecc,area]
-DriverMultiplier = J.var("DriverMultiplier", locs; filter=omm, sec) # fine
-xDriver = J.var("xDriver", locs; filter=omm, sec) # issue
-DrSwitch = J.var("DrSwitch", locs; filter=omm, sec) # 21
-xGO = J.var("xGO", locs; filter=omm, sec) # issue
-vGO = J.var("vGO", locs; filter=omm, sec) # doesn't prvide data for CN
+DriverMultiplier = J.var("DriverMultiplier", locs; filter=ppm, sec) # fine
+xDriver = J.var("xDriver", locs; filter=ppm, sec) # issue
+DrSwitch = J.var("DrSwitch", locs; filter=ppm, sec) # 21
+xGO = J.var("xGO", locs; filter=ppm, sec) # issue
+vGO = J.var("vGO", locs; filter=ppm, sec) # doesn't prvide data for CN
     # xGO[ecc,area,year]  =sum(xGOECC[ecc,areatom,year]*
     #   MapAreaTOM[area,areatom] for areatom in areatoms)
 
-# xGOECC = J.var("xGOECC", locs; filter=omm, sec) # temp var
-MapECCfromTOM = J.var("KInput/MapECCfromTOM", locs; filter=omm, sec='K') # 
+# xGOECC = J.var("xGOECC", locs; filter=ppm, sec) # temp var
+MapECCfromTOM = J.var("KInput/MapECCfromTOM", locs; filter=ppm, sec='K') # 
 @rsubset MapECCfromTOM :Spruce != 0 || :Tanoak != 0
-push!(omm, :ECCfromTOM => ["CopperMining","GoldOreMining","OtherMetalMining"])
-GY = J.var("KOutput/GY", locs; filter=omm, sec='K') # 
+push!(ppm, :ECCfromTOM => ["CopperMining","GoldOreMining","OtherMetalMining"])
+GY = J.var("KOutput/GY", locs; filter=ppm, sec='K') # 
 @rsubset GY :AreaTOM == "ON"
-tech = pop!(omm, :Tech)
-MMSF = J.var("MMSF", locs; filter=omm, sec) # 
+tech = pop!(ppm, :Tech)
+MMSF = J.var("MMSF", locs; filter=ppm, sec) # 
 J.add_pdiff!(MMSF)
 @rsubset! MMSF :Spruce != 0 || :Tanoak != 0
-xProcSw = J.var("xProcSw", locs; filter=omm, sec) # 
+xProcSw = J.var("xProcSw", locs; filter=ppm, sec) # 
 @rsubset xProcSw :PI == "MShare"
-xMMSF = J.var("xMMSF", locs; filter=omm, sec) # 
+xMMSF = J.var("xMMSF", locs; filter=ppm, sec) # 
 
 # MMSF[enduse,tech,ec,area] = MMSF[enduse,tech,ec,area]+
 # max(MMSF[enduse,tech,ec,area]-MMSFB[enduse,tech,ec,area],0)*
 # ETSwitch[tech,area] 
-ETSwitch = J.var("ETSwitch", locs; filter=omm, sec) # 
+ETSwitch = J.var("ETSwitch", locs; filter=ppm, sec) # 
 
 #   for area in Areas,enduse in Enduses,ec in ECs,tech in Techs
 #     if MCFU[enduse,tech,ec,area]  > 0.0 && 
@@ -261,38 +290,45 @@ ETSwitch = J.var("ETSwitch", locs; filter=omm, sec) #
 #     TMAW[enduse,ec,area] = sum(MAW[enduse,tech,ec,area] for tech in Techs)
 #     @finite_math MMSF[enduse,tech,ec,area] = MAW[enduse,tech,ec,area]/TMAW[enduse,ec,area]
 #   end
-pop!(omm, :Tech)
-push!(omm, :Year => string.(2022:2023))
-push!(omm, :Tech => ["OffRoad"], :Enduse => ["OffRoad"])
-pop!(omm, :Tech)
-MMSM0 = J.var("MMSM0", locs; filter=omm, sec) # doesn't match
-MMSM0 = J.var("MMSM0", spr_base, tan_base; filter=omm, sec) # doesn't match
+pop!(ppm, :Tech)
+push!(ppm, :Year => string.(2022:2023))
+push!(ppm, :Tech => ["OffRoad"], :Enduse => ["OffRoad"])
+pop!(ppm, :Tech)
+MMSM0 = J.var("MMSM0", locs; filter=ppm, sec, pdiff = true) 
+@rsubset MMSM0 :Pine_pdiff_Redwood != 0# doesn't match
+MMSM0 = J.var("MMSM0", spr_base, tan_base; filter=ppm, sec) # doesn't match
 @rsubset MMSM0 :Spruce > -170 || :Tanoak > -170
-MSMM = J.var("MSMM", locs; filter=omm, sec) # matches
-MVF = J.var("MVF", locs; filter=omm, sec) # matches
-MCFU = J.var("MCFU", locs; filter=omm, sec) # close
-MMSMI = J.var("MMSMI", locs; filter=omm, sec) # 0
-AMSF = J.var("AMSF", locs; filter=omm, sec) # doesn't match
-PEE = J.var("PEE", locs; filter=omm, sec) # doesn't match
+MSMM = J.var("MSMM", locs; filter=ppm, sec) # matches
+MVF = J.var("MVF", locs; filter=ppm, sec) # matches
+MCFU = J.var("MCFU", locs; filter=ppm, sec) # close
+omm_init = copy(ppm)
+push!(omm_init, :Year => "1985")
+MCFU0 = J.var("MCFU", locs; filter=omm_init, sec) # close
+
+MMSMI = J.var("MMSMI", locs; filter=ppm, sec) # 0
+AMSF = J.var("AMSF", locs; filter=ppm, sec) # doesn't match
+PEE = J.var("PEE", locs; filter=ppm, sec) # doesn't match
+PEE0 = J.var("PEE", locs; filter=omm_init, sec) # doesn't match
 @rsubset PEE isnan(:Tanoak)
-PEESw = J.var("PEESw", locs; filter=omm, sec) # 1
+MMSM0 = J.var("MMSM0", locs; filter=ppm, sec) # doesn't match
+PEESw = J.var("PEESw", locs; filter=ppm, sec) # 1
 
             # @finite_math MAW[enduse,tech,ec,area] = exp(MMSMI[enduse,tech,ec,area]*
             #   (SPC[ec,area]/SPop[ec,area])/(SPC0[ec,area]/SPop0[ec,area])+
             #   MVF[enduse,tech,ec,area]*log((MCFU[enduse,tech,ec,area]/Inflation[area]/
             #   PEE[enduse,tech,ec,area])/(MCFU0[enduse,tech,ec,area]/Inflation0[area]/PEE0[enduse,tech,ec,area])))
+push!(ppm, :Tech => "Electric")
+MMSMI = J.var("MMSMI", locs; filter=ppm, sec) # 0
+MVF = J.var("MVF", locs; filter=ppm, sec) # matches
+MCFU = J.var("MCFU", locs; filter=ppm, sec) # close
+AMSF = J.var("AMSF", locs; filter=ppm, sec) # doesn't match
+PEE = J.var("PEE", locs; filter=ppm, sec) # doesn't match
 
-            MMSMI = J.var("MMSMI", locs; filter=omm, sec) # 0
-MVF = J.var("MVF", locs; filter=omm, sec) # matches
-MCFU = J.var("MCFU", locs; filter=omm, sec) # close
-AMSF = J.var("AMSF", locs; filter=omm, sec) # doesn't match
-PEE = J.var("PEE", locs; filter=omm, sec) # doesn't match
 
 
-
-Enduse = pop!(omm, :Enduse)
-push!(omm, :Enduse => Enduse)
-PEEBeforeStd = J.var("PEEBeforeStd", locs; filter=omm, sec) # doesn't match
+Enduse = pop!(ppm, :Enduse)
+push!(ppm, :Enduse => Enduse)
+PEEBeforeStd = J.var("PEEBeforeStd", locs; filter=ppm, sec) # doesn't match
 PEEBeforeStd = J.var("PEEBeforeStd", locs; filter, sec) # doesn't match
 J.add_pdiff!(PEEBeforeStd)
 @rsubset! PEEBeforeStd :Year >= 2020 :Year <= 2030
@@ -334,7 +370,7 @@ df = leftjoin(df, PFPN, on = [:Enduse, :Tech, :EC, :Area], renamecols = "" => "_
 # Sometime PEE is getting halved and sometimes not. 
 # For EC(Food) Enduse(OthSub), Tech(Oil) get halved but Tech(ommRoad) does not.
 # Let's findout why
-food = copy(omm)
+food = copy(ppm)
 PEEBeforeStd_f = J.var("PEEBeforeStd", locs; filter=food, sec) # doesn't match
 PEEBeforeStd # Doesn't match between Oil and ommRoad in Spruce
 push!(food, :EC => "Food", :Enduse => "OthSub", :Tech => ["Oil", "ommRoad"])
