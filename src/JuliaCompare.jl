@@ -62,10 +62,10 @@ function loc(DATA_FOLDER::String, name::String)
   end
 end
 
-function filter()
-  filter = Dict{Symbol,Any}()
-  push!(filter, :Area => Canada, :Year => string.(1986:2050))
-  return filter
+function fltr()
+  fltr = Dict{Symbol,Any}()
+  push!(fltr, :Area => Canada, :Year => string.(1986:2050))
+  return fltr
 end
 
 function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
@@ -590,20 +590,20 @@ function add_percent_differences!(df::DataFrame, locs::Vector{<:Location}, perce
 end
 
 function var(vname::String, loc; 
-                   filter::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
+                   fltr::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
                    sec::Char="")
   vname, dbname = lookup_database(vname, loc; sec)
   arr, sets = arr_set(vname, dbname, loc)
   # set == set2 ? sets = set : error("Sets Don't Match")
-  if !isempty(filter)
-    arr, sets = subset_array(arr, sets, filter)
+  if !isempty(fltr)
+    arr, sets = subset_array(arr, sets, fltr)
   end
   df = to_tidy_dataframe(arr, sets; Value = vname)
   return df
 end
 
 function var(vname::String, locs::Vector{<:Location}; 
-             filter::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
+             fltr::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
              sec::Char="",
              diff::Union{Bool, Symbol, Vector{Int}}=false,
              pdiff::Union{Bool, Symbol, Vector{Int}}=false)
@@ -626,11 +626,11 @@ function var(vname::String, locs::Vector{<:Location};
   if allequal(sets) 
     (set = sets[1]) 
   
-    if !isempty(filter)
+    if !isempty(fltr)
       # Apply filter to all arrays and get the filtered set (same for all)
       set_filtered = nothing
       for i in eachindex(arrs)
-        arrs[i], current_set = subset_array(arrs[i], set, filter)
+        arrs[i], current_set = subset_array(arrs[i], set, fltr)
         if set_filtered === nothing
           set_filtered = current_set  # Store the first filtered set
         end
@@ -640,18 +640,18 @@ function var(vname::String, locs::Vector{<:Location};
     
     df = to_tidy_dataframe(arrs, set, loc_names)
   else
-    @warn "Sets Don't Match Before Filter" 
-    if !isempty(filter)
+    @warn "Sets Don't Match Before fltr" 
+    if !isempty(fltr)
       for i in eachindex(arrs)
-        arrs[i], sets[i] = subset_array(arrs[i], sets[i], filter)
+        arrs[i], sets[i] = subset_array(arrs[i], sets[i], fltr)
       end
     end
     if allequal(sets) 
-      println("Sets match After Filter")
+      println("Sets match After fltr")
       set = sets[1]
       df = to_tidy_dataframe(arrs, set, loc_names)
     else 
-      @warn "Sets still don't match after filter"
+      @warn "Sets still don't match after fltr"
       dfs = [to_tidy_dataframe(arrs[i],sets[i]; Value = loc_names[i]) for i in eachindex(arrs)]
       df = join_vars(dfs...)
     end
@@ -669,15 +669,15 @@ function var(vname::String, locs::Vector{<:Location};
 end
 
 function diff_fast(vname::String, loc1, loc2; 
-                   filter::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
+                   fltr::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
                    sec::Char="")
   vname1, dbname1 = lookup_database(vname, loc1; sec)
   vname2, dbname2 = lookup_database(vname, loc2; sec)
   arr1, set1 = arr_set(vname1, dbname1, loc1)
   arr2, set2 = arr_set(vname2, dbname2, loc2)
   set1 == set2 ? sets = set1 : error("Sets Don't Match")
-  arr1, set1 = subset_array(arr1, sets, filter)
-  arr2, set2 = subset_array(arr2, sets, filter)
+  arr1, set1 = subset_array(arr1, sets, fltr)
+  arr2, set2 = subset_array(arr2, sets, fltr)
   df1 = to_tidy_dataframe(arr1, set1)
   df2 = to_tidy_dataframe(arr2, set2)
   df = diff(df1, df2; name1 = loc1.name, name2 = loc2.name)
@@ -886,19 +886,19 @@ function archive_search(Needle::String)
 end
 
 """
-    subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters::Dict{Symbol, <:Any})
+    subset_array(array::AbstractArray, sets::NamedTuple, fltr::Dict{Symbol, <:Any})
 
 Filters a multi-dimensional array based on dimension names and values.
 
 # Arguments
 - `array::AbstractArray`: The array to filter
 - `sets::NamedTuple`: Named tuple containing the dimension values for each axis
-- `dimension_filters::Dict{Symbol, <:Any}`: Dictionary mapping dimension names to filter values
+- `fltr::Dict{Symbol, <:Any}`: Dictionary mapping dimension names to filter values
 
 # Returns
 - `Tuple{Array, NamedTuple}`: A tuple containing the filtered array and the filtered dimension sets
 """
-function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters::Dict{Symbol, <:Any})
+function subset_array(array::AbstractArray, sets::NamedTuple, fltr::Dict{Symbol, <:Any})
     # Get the dimensions of the array
     dims = ndims(array)
     
@@ -917,8 +917,8 @@ function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters:
     for dim_name in dim_names
         dim_values = getproperty(sets, dim_name)
         
-        if haskey(dimension_filters, dim_name)
-            filter_value = dimension_filters[dim_name]
+        if haskey(fltr, dim_name)
+            filter_value = fltr[dim_name]
                 
             # Find the indices that match the filter
             if filter_value isa Function
@@ -959,13 +959,13 @@ function subset_array(array::AbstractArray, sets::NamedTuple, dimension_filters:
 end
 
 """
-    subset_dataframe(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+    subset_dataframe(df::DataFrame, fltr::Dict; drop_filtered_cols::Bool=false)
 
 Filter a DataFrame based on conditions specified in a dictionary.
 
 # Arguments
 - `df`: The DataFrame to filter
-- `filters`: Dictionary where keys are column names and values are the filter conditions
+- `fltr`: Dictionary where keys are column names and values are the filter conditions
 - `drop_filtered_cols`: If true, removes the filtered columns from the result (default: false)
 
 # Filter conditions can be:
@@ -1003,7 +1003,7 @@ result = subset_dataframe(df, Dict(
 result = subset_dataframe(df, Dict("Year" => 2022), drop_filtered_cols=true)
 ```
 """
-function subset_dataframe(df_in::DataFrame, filters::Dict{<:Any,<:Any}; drop_filtered_cols::Bool=false)
+function subset_dataframe(df_in::DataFrame, fltr::Dict{<:Any,<:Any}; drop_filtered_cols::Bool=false)
   df = copy(df_in)
   # Check if the DataFrame is empty
   isempty(df) && return df
@@ -1012,7 +1012,7 @@ function subset_dataframe(df_in::DataFrame, filters::Dict{<:Any,<:Any}; drop_fil
   filtered_cols = Symbol[]
   
   # Apply each filter
-  for (col_key, condition) in filters
+  for (col_key, condition) in fltr
       # Handle different key types (Symbol, String, etc.)
       col_sym = col_key isa Symbol ? col_key : Symbol(string(col_key))
       # Check if the column exists in the DataFrame
@@ -1062,13 +1062,13 @@ function subset_dataframe(df_in::DataFrame, filters::Dict{<:Any,<:Any}; drop_fil
 end
 
 """
-    subset_dataframe!(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+    subset_dataframe!(df::DataFrame, fltr::Dict; drop_filtered_cols::Bool=false)
 
 In-place version of subset_dataframe that modifies the input DataFrame directly.
 
 # Arguments and behavior are the same as subset_dataframe
 """
-function subset_dataframe!(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+function subset_dataframe!(df::DataFrame, fltr::Dict; drop_filtered_cols::Bool=false)
   # Check if the DataFrame is empty
   isempty(df) && return df
   
@@ -1076,7 +1076,7 @@ function subset_dataframe!(df::DataFrame, filters::Dict; drop_filtered_cols::Boo
   filtered_cols = Symbol[]
   
   # Apply each filter
-  for (col_key, condition) in filters
+  for (col_key, condition) in fltr
       # Handle different key types (Symbol, String, etc.)
       col_sym = col_key isa Symbol ? col_key : Symbol(string(col_key))
       # Check if the column exists in the DataFrame
@@ -1126,21 +1126,21 @@ function subset_dataframe!(df::DataFrame, filters::Dict; drop_filtered_cols::Boo
 end
 # Performance optimized version for large DataFrames
 """
-    subset_dataframe_optimized(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+    subset_dataframe_optimized(df::DataFrame, fltr::Dict; drop_filtered_cols::Bool=false)
 
 Optimized version of subset_dataframe that uses DataFrames.jl's built-in filtering
 capabilities more efficiently. This version is faster for large DataFrames.
 
 # Arguments and behavior are the same as subset_dataframe
 """
-function subset_dataframe_optimized(df::DataFrame, filters::Dict; drop_filtered_cols::Bool=false)
+function subset_dataframe_optimized(df::DataFrame, fltr::Dict; drop_filtered_cols::Bool=false)
     # Check if the DataFrame is empty
     isempty(df) && return df
     
     result_df = df
     filtered_cols = String[]
     
-    for (col, condition) in filters
+    for (col, condition) in fltr
         # Check if the column exists in the DataFrame
         col_sym = Symbol(col)
         if !(col in names(result_df) || col_sym in names(result_df))
@@ -1186,7 +1186,7 @@ Converts a multi-dimensional array and its dimension sets into a tidy DataFrame 
 
 # Example
 ```julia
-filtered_array, filtered_sets = subset_array(HDGCCI_j, sets, dimension_filters)
+filtered_array, filtered_sets = subset_array(HDGCCI_j, sets, fltr)
 df = to_tidy_dataframe(filtered_array, filtered_sets)
 ```
 """
@@ -1331,7 +1331,7 @@ function to_tidy_dataframe(arrays::Vector{<:AbstractArray}, sets::NamedTuple)
   return to_tidy_dataframe(arrays, sets, value_names)
 end
 """
-    ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
+    ReadDiskRaw(db::String, name::String; fltr::Dict = Dict())
 
 Reads the dataset named `name` from the HDF5 file specified by `db` and returns
 the raw array with filters applied at read time.
@@ -1339,7 +1339,7 @@ the raw array with filters applied at read time.
 # Arguments
 - `db::String`: Path to the HDF5 file
 - `name::String`: Name of the dataset to read
-- `dimension_filters::Dict=Dict()`: A dictionary mapping dimension names to filter criteria
+- `fltr::Dict=Dict()`: A dictionary mapping dimension names to filter criteria
 
 # Returns
 - `Tuple{Array, Dict}`: A tuple containing the filtered array and a dictionary 
@@ -1349,10 +1349,10 @@ the raw array with filters applied at read time.
 ```julia
 # Read only data for specific years
 data, dim_info = ReadDiskRaw("data.h5", "my_dataset", 
-                             dimension_filters = Dict("Year" => [2020, 2030]))
+                             fltr = Dict("Year" => [2020, 2030]))
 ```
 """
-function ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
+function ReadDiskRaw(db::String, name::String; fltr::Dict = Dict())
   h5open(db, "r") do f
   if !haskey(f, name)
   throw(HDF5DataSetNotFoundException(db, name))
@@ -1390,8 +1390,8 @@ function ReadDiskRaw(db::String, name::String; dimension_filters::Dict = Dict())
         # Apply filter for this dimension if provided
         selected_indices = collect(1:length(values))
         
-        if haskey(dimension_filters, dim)
-            filter_criterion = dimension_filters[dim]
+        if haskey(fltr, dim)
+            filter_criterion = fltr[dim]
             
             if filter_criterion isa Function
                 # Apply function to values
