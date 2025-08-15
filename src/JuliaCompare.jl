@@ -43,6 +43,31 @@ const db_files = ["2020DB", "CCalDB", "CInput", "COutput", "ECalDB", "EGCalDB",
   "TInput", "TOutput", "VBInput", "vData_ElectricUnits"
 ]
 
+function loc(DATA_FOLDER::String, name::String)
+  if endswith(lowercase(DATA_FOLDER), "hdf5")
+    HDF5_path = DATA_FOLDER
+  else
+    HDF5_path = joinpath(DATA_FOLDER,"database.hdf5")
+  end
+  if isfile(HDF5_path)
+    @info "Creating a Julia Location"
+    vars = list_vars(HDF5_path)
+    return(Loc_j(vars, HDF5_path, name))
+  elseif isfile(joinpath(DATA_FOLDER,"2020db.dba"))
+    @info "Creating a Promula Location"
+    vars = list_vars(DATA_FOLDER, db_files)
+    return(Loc_p(vars,DATA_FOLDER, name))
+  else
+    @error "Neither a database.hdf5 nor a 2020db.dba was found at $DATA_FOLDER"
+  end
+end
+
+function filter()
+  filter = Dict{Symbol,Any}()
+  push!(filter, :Area => Canada, :Year => string.(1986:2050))
+  return filter
+end
+
 function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   if verbose
     print("cfilename is: ", cfilename, "\n")
