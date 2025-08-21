@@ -21,8 +21,11 @@ J.list_var(cfilename, CODE_FOLDER, DATA_FOLDER)
 
 vars = J.list_vars(DATA_FOLDER1, db_files);
 vars_j = J.list_vars(joinpath(DATA_FOLDER2,"database.hdf5"))
-loc1 = J.Loc_p(vars, raw"\\Pink\c\2020CanadaPineAqua\2020Model\Ref25", "Pine");
-loc2 = J.Loc_j(vars_j, joinpath(raw"\\Pink\c\2020CanadaRedwoodAqua\2020Model\Ref25", "database.hdf5"), "Redwood");
+loc1 = J.loc(raw"\\Pink\c\2020CanadaPine\2020Model\Ref25", "Pine");
+loc2 = J.loc(raw"\\Pink\c\2020CanadaRedwood\2020Model\Ref25", "Redwood");
+
+vnames = ["MEInput/FuA0","MEInput/FuB0"]
+variables, summary = J.compare_vars(vnames, [loc1, loc2]; diff = true, pdiff = true)
 
 sec = 'T'
 filter = Dict{Symbol,Any}()
