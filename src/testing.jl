@@ -26,6 +26,21 @@ loc2 = J.loc(raw"\\Pink\c\2020CanadaRedwood\2020Model\Ref25", "Redwood");
 
 vnames = ["MEInput/FuA0","MEInput/FuB0"]
 variables, summary = J.compare_vars(vnames, [loc1, loc2]; diff = true, pdiff = true)
+locations = [redwood, pine]
+redwood = J.loc("C:/2020CanadaRedwood/2020Model/Ref25", "Redwood")
+pine = J.loc("C:/2020CanadaPine/2020Model/Ref25", "Pine")
+
+vnames = ["ROutput/DERRRExo","COutput/DERRRExo"]
+J.lookup_database("COutput/DERRRExo", loc1)
+J.lookup_database("ROutput/DERRRExo", loc2)
+locations = [loc1,loc2]
+variables, summary = J.compare_vars(vnames,locations;diff=true,pdiff=true)
+summary
+df = variables["ROutput/DERRRExo"]
+describe(df)
+@rsubset df :Redwood_minus_Pine != 0
+sort!(df, :Redwood_minus_Pine)
+J.plot_sets(df, col = :Redwood_minus_Pine, dim = "EC")
 
 sec = 'T'
 filter = Dict{Symbol,Any}()

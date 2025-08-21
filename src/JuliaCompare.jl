@@ -391,43 +391,68 @@ function diff(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
 end
 
 function lookup_database(name, loc; sec::Char=' ')
+  println("Looking up: '$name'")
+  
   if contains(name, "/")
-    name_vec = string.(split(name, "/"))
-    return (name_vec[2], name_vec[1])
+    println("'$name' contains a slash")
+    name_parts = string.(split(name, "/"))
+    variable_name = name_parts[2]
+    database_name = name_parts[1]
+    println("  -> Variable: '$variable_name', Database: '$database_name'")
+    return (variable_name, database_name)
   else
+    println("'$name' does not contain a slash")
     vars = loc.vars
     temp2 = find_var(name, vars; exact=true)
     n = nrow(temp2)
+    
     if n == 1
-      return (temp2.Variable[1], temp2.Database[1])
-    elseif n > 1 && sec == ""
-      println(name, " could have several values, select one of the below\n")
+      result = (temp2.Variable[1], temp2.Database[1])
+      println("  -> Found exact match: $result")
+      return result
+      
+    elseif n > 1 && sec == ' '  # Changed from "" to ' '
+      println("'$name' could have several values, select one of the below:")
       println(temp2)
-      error("Variable not found")
-    elseif n > 1 && sec != "" 
+      error("Variable not found - multiple matches without sector specification")
+      
+    elseif n > 1 && sec != ' '  # Changed from "" to ' '
       i = findall(first.(temp2.Database) .== sec)
-      println("Found these options")
+      println("Found these options:")
       println(temp2)
-      println("I think you want this one: ", i)
+      println("Looking for sector '$sec', found indices: $i")
+      
       if length(i) == 1
         ind = i[1]
-        return (string(temp2[ind,:Variable]), temp2[ind,:Database])
+        result = (string(temp2[ind, :Variable]), temp2[ind, :Database])
+        println("  -> Selected: $result")
+        return result
       else
-        println(name, " could have several values, select one of the below\n")
+        println("'$name' could have several values, select one of the below:")
         println(temp2)
-        error("Variable not found")
+        error("Variable not found - multiple or no matches for sector '$sec'")
       end
+      
     else
+      # Try fuzzy search
       temp = find_var(name, vars)
       m = nrow(temp)
+      
       if m == 1
-        return (temp.Variable[1], temp.Database[1])
+        result = (temp.Variable[1], temp.Database[1])
+        println("  -> Found fuzzy match: $result")
+        return result
+        
       elseif m == 0
-        println(name, " not found in vars, perhaps your variable is in the list below\n")
-        temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(name)))
-        println(vars[temp2,[:Variable, :Database]])
-        error("Variable not found")
-        return (vars[temp2,[:Variable, :Database]])
+        println("'$name' not found in vars, perhaps your variable is in the list below:")
+        temp2_indices = findall(occursin.(lowercase(name), lowercase.(vars.Variable)))
+        println(vars[temp2_indices, [:Variable, :Database]])
+        error("Variable not found - no matches")
+        
+      else
+        println("'$name' has multiple fuzzy matches:")
+        println(temp)
+        error("Variable not found - multiple fuzzy matches")
       end
     end
   end
@@ -618,8 +643,8 @@ function var(vname::String, locs::Vector{<:Location};
   end  
   #
   for loc in locs
-    vname, dbname = lookup_database(vname, loc; sec) 
-    arr, set = arr_set(vname, dbname, loc)
+    vname_processed, dbname = lookup_database(vname, loc; sec) 
+    arr, set = arr_set(vname_processed, dbname, loc)
     push!(arrs, arr)
     push!(sets, set)
   end
@@ -674,7 +699,17 @@ function compare_vars(vnames::Vector{String}, locs::Vector{<:Location};
              sec::Char=' ',
              diff::Union{Bool, Symbol, Vector{Int}}=false,
              pdiff::Union{Bool, Symbol, Vector{Int}}=false)
-  values = [var(vname,locs;fltr,sec,diff,pdiff) for vname in vnames]
+  values = Vector{DataFrame}()
+for (i, vname) in enumerate(vnames)
+    println("\n=== Processing iteration $i ===")
+    println("Current vname: '$vname'")
+    println("vnames vector: $vnames")
+    
+    result = var(vname, locs; fltr, sec, diff, pdiff)
+    push!(values, result)
+    
+    println("vnames vector after var(): $vnames")
+  end
   variables = Dict(zip(vnames, values))  # Simple Dict instead of NamedTuple
   summary = DataFrame(Name = vnames)
   for loc in locs
