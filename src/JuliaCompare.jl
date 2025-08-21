@@ -390,7 +390,7 @@ function diff(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
   df = diff(df1, df2; name1, name2)
 end
 
-function lookup_database(name, loc; sec::Char="")
+function lookup_database(name, loc; sec::Char=' ')
   if contains(name, "/")
     name_vec = string.(split(name, "/"))
     return (name_vec[2], name_vec[1])
