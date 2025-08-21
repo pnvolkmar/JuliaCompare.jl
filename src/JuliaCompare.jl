@@ -617,7 +617,7 @@ end
 
 function var(vname::String, loc; 
                    fltr::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
-                   sec::Char="")
+                   sec::Char=' ')
   vname, dbname = lookup_database(vname, loc; sec)
   arr, sets = arr_set(vname, dbname, loc)
   # set == set2 ? sets = set : error("Sets Don't Match")
@@ -630,7 +630,7 @@ end
 
 function var(vname::String, locs::Vector{<:Location}; 
              fltr::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
-             sec::Char="",
+             sec::Char=' ',
              diff::Union{Bool, Symbol, Vector{Int}}=false,
              pdiff::Union{Bool, Symbol, Vector{Int}}=false)
   # 
@@ -732,7 +732,7 @@ end
 
 function diff_fast(vname::String, loc1, loc2; 
                    fltr::Dict{Symbol, <:Any}=Dict{Symbol,Any}(),
-                   sec::Char="")
+                   sec::Char=' ')
   vname1, dbname1 = lookup_database(vname, loc1; sec)
   vname2, dbname2 = lookup_database(vname, loc2; sec)
   arr1, set1 = arr_set(vname1, dbname1, loc1)
