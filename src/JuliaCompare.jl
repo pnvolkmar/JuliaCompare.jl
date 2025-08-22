@@ -880,8 +880,10 @@ function plot_sets(data::DataFrame;
   df = @by(df, [Symbol(dim), :Year], $l_symbol = sum(Vector($l_symbol)))
   
   cats = categorical(df[:, dim])
-  n_levels = length(levels(cats))
-  colors = distinguishable_colors(n_levels)
+  unique_categories = unique(df[:, dim])  # Only categories in final data
+  n_categories = length(unique_categories)
+  colors = distinguishable_colors(n_categories)
+  labels = String.(unique_categories)  
   
   fig = Figure()
   ax = Axis(fig[1, 1]; title=title, ylabel = units, xlabel = "Year")
@@ -892,7 +894,6 @@ function plot_sets(data::DataFrame;
   
   barplot!(ax, df.Year, df[:, l], stack=color_indices, color=colors[color_indices])
   
-  labels = String.(levels(cats))
   elements = [PolyElement(polycolor=colors[i]) for i in 1:length(labels)]
   Legend(fig[1, 2], elements, labels, String(dim))
   display(fig)
