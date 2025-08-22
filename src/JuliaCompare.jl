@@ -10,6 +10,8 @@ import SmallModel: ReadDisk, ReadSets, data_attrs
 export db_files, Canada
 include("UnCodeMapping.jl")
 include("TidyingArrays.jl")
+include("CleanSets.jl")
+include("Diagnostics.jl")
 
 greet() = print("Hello Randy")
 
@@ -320,7 +322,7 @@ function var(needle, vars, DATA_FOLDER)
   end
 end
 
-function var(needle, loc::Loc_p)
+function var_legacy(needle, loc::Loc_p)
   (; vars, DATA_FOLDER) = loc
   return (var(needle, vars, DATA_FOLDER))
 end
@@ -467,12 +469,16 @@ function arr_set(vname::String, dbname::String, loc::Loc_j)
         if :Unit ∈ keys(sets)
             UnCode = ReadDisk(loc.HDF5_path, "EGInput/UnCode")
             UnCode[UnCode .== "Null"] .= ""
-            sets = merge(sets, (Unit = categorical(UnCode),))
+            sets = merge(sets, (Unit = UnCode,))
         end
         
+        # Clean up sets and compress array
+        cleaned_sets, index_mapping = clean_duplicate_dimensions(sets)
+        arr = compress_array(arr, index_mapping)
+        
         # Convert all set components to categorical
-        categorical_sets = NamedTuple{keys(sets)}(
-            Tuple(categorical(getproperty(sets, k)) for k in keys(sets))
+        categorical_sets = NamedTuple{keys(cleaned_sets)}(
+            Tuple(categorical(getproperty(cleaned_sets, k)) for k in keys(cleaned_sets))
         )
         sets = categorical_sets
     else
@@ -486,14 +492,18 @@ function arr_set(vname::String, dbname::String, loc::Loc_j)
         else
             key = [Symbol(vname[setdiff(1:length(vname), idx)])]
         end
-        # Make the set values categorical
-        sets = NamedTuple{Tuple(key)}(Tuple([categorical(values)]))
+        
+        # For set types, also clean duplicates
+        unique_values = unique(values)
+        sets = NamedTuple{Tuple(key)}(Tuple([categorical(unique_values)]))
+        # Update arr to only contain unique values
+        arr = unique_values
     end
     
     # Handle TimeP and TimeA transformations while keeping categorical
     if :TimeP ∈ keys(sets)
         timeP_vals = getproperty(sets, :TimeP)
-        if '(' ∉ timeP_vals[1]
+        if length(timeP_vals) > 0 && '(' ∉ timeP_vals[1]
             new_timeP = categorical([string("TimeP(", match(r"\d+", tp).match, ")") for tp in timeP_vals])
             sets = merge(sets, (TimeP = new_timeP,))
         end
@@ -501,7 +511,7 @@ function arr_set(vname::String, dbname::String, loc::Loc_j)
     
     if :TimeA ∈ keys(sets)
         timeA_vals = getproperty(sets, :TimeA)
-        if '(' ∉ timeA_vals[1]
+        if length(timeA_vals) > 0 && '(' ∉ timeA_vals[1]
             new_timeA = categorical([string("TimeA(", match(r"\d+", ta).match, ")") for ta in timeA_vals])
             sets = merge(sets, (TimeA = new_timeA,))
         end
@@ -511,18 +521,23 @@ function arr_set(vname::String, dbname::String, loc::Loc_j)
 end
 
 function arr_set(vname::String, dbname::String, loc::Loc_p)
-  arr = P.data(joinpath(loc.DATA_FOLDER, string(dbname, ".dba")), vname)
-  idx = findfirst(loc.vars.Variable .== vname .&& loc.vars.Database .== dbname)
-  keys = Symbol.(split(loc.vars.Dimensions[idx], ","))
-  dim_pairs = loc.vars.DPairs[idx]
-  
-  # Get the dimension values and convert to categorical
-  values = [P.data(key, value) for (key, value) in dim_pairs]
-  categorical_values = [categorical(vals) for vals in values]
-  
-  sets = NamedTuple{Tuple(keys)}(Tuple(categorical_values))
-  
-  return(arr, sets)
+    arr = P.data(joinpath(loc.DATA_FOLDER, string(dbname, ".dba")), vname)
+    idx = findfirst(loc.vars.Variable .== vname .&& loc.vars.Database .== dbname)
+    keys = Symbol.(split(loc.vars.Dimensions[idx], ","))
+    dim_pairs = loc.vars.DPairs[idx]
+    
+    # Get the dimension values
+    values = [P.data(key, value) for (key, value) in dim_pairs]
+    
+    # Clean up dimensions and compress array
+    cleaned_values, index_mapping = clean_duplicate_dimensions_from_vectors(values)
+    arr = compress_array(arr, index_mapping)
+    
+    # Convert to categorical
+    categorical_values = [categorical(vals) for vals in cleaned_values]
+    sets = NamedTuple{Tuple(keys)}(Tuple(categorical_values))
+    
+    return(arr, sets)
 end
 
 function add_differences!(df::DataFrame, locs::Vector{<:Location}, diff::Union{Bool, Symbol, Vector{Int}})
@@ -697,6 +712,7 @@ function var(vname::String, locs::Vector{<:Location};
       df = to_tidy_dataframe(arrs, set, loc_names)
     else 
       @warn "Sets still don't match after fltr"
+      diagnose_set_mismatch(sets, loc_names; fltr)
       dfs = [to_tidy_dataframe(arrs[i],sets[i]; Value = loc_names[i]) for i in eachindex(arrs)]
       df = join_vars(dfs...)
     end
