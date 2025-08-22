@@ -9,26 +9,19 @@ using CSV, DataFrames, DataFramesMeta
 ################################################################################
 # Inputs for file locations ####################################################
 ################################################################################
-DATA_FOLDER1 = raw"\\Pink\c\2020CanadaPine\2020Model"
-DATA_FOLDER2 = raw"\\Pink\c\2020CanadaRedwood\2020Model"
-################################################################################
-
-cfilename = "TInput"
-CODE_FOLDER = raw"\\Pink\c\2020CanadaPine\Engine"
-DATA_FOLDER = raw"\\Pink\c\2020CanadaPine\2020Model"
-J.list_var(cfilename, CODE_FOLDER, DATA_FOLDER)
-
-
-vars = J.list_vars(DATA_FOLDER1, db_files);
-vars_j = J.list_vars(joinpath(DATA_FOLDER2,"database.hdf5"))
 loc1 = J.loc(raw"\\Pink\c\2020CanadaPine\2020Model\Ref25", "Pine");
 loc2 = J.loc(raw"\\Pink\c\2020CanadaRedwood\2020Model\Ref25", "Redwood");
 
 vnames = ["MEInput/FuA0","MEInput/FuB0"]
 variables, summary = J.compare_vars(vnames, [loc1, loc2]; diff = true, pdiff = true)
+test = J.var("RInput/DmFracMin", [loc1, loc2]; diff = true, pdiff = true)
+vnames = ["RInput/DmFracMin","CInput/DmFracMin"]
+variables, summary = J.compare_vars(vnames, [loc1, loc2]; diff = true, pdiff = true)
 locations = [redwood, pine]
 redwood = J.loc("C:/2020CanadaRedwood/2020Model/Ref25", "Redwood")
 pine = J.loc("C:/2020CanadaPine/2020Model/Ref25", "Pine")
+DmFrac = variables["RInput/DmFracMin"]
+J.plot_sets(DmFrac; col = "Pine_minus_Redwood", dim = "EC")
 
 vnames = ["ROutput/DERRRExo","COutput/DERRRExo", "EGInput/xUnFlFr"]
 J.lookup_database("COutput/DERRRExo", loc1)

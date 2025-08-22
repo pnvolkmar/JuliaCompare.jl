@@ -848,26 +848,51 @@ function plot_sets(data::DataFrame;
   num::Integer=10, 
   title::String = "",
   units::String = "")
+  
   df = deepcopy(data)
+  
+  # Convert Year from categorical to numeric if needed
+  if df.Year isa CategoricalArray
+    df.Year = parse.(Int, Vector(df.Year))
+  end
+  
   if col == ""
     l = last(names(df))
   else 
     l = col
   end
   l_symbol = Symbol(l)
-  @rsubset! df $l != 0
-  df2 = @by(df, [Symbol(dim)], :Value = sum(abs.($l)))
+  
+  # Filter out zero values - handle categorical columns properly
+  if df[!, l_symbol] isa CategoricalArray
+    @rsubset! df Vector($l_symbol) != 0
+  else
+    @rsubset! df $l_symbol != 0
+  end
+  
+  df2 = @by(df, [Symbol(dim)], :Value = sum(abs.(Vector($l_symbol))))
   df2 = @orderby(df2, -:Value)
   ss = first(df2[!, dim], num)
   others = setdiff(df[:, dim], ss)
   df[in.(df[:, dim], Ref(others)), dim] .= "Other"
-  df = @by(df, [Symbol(dim), :Year], $l = sum($l))
+  
+  # Group and sum
+  df = @by(df, [Symbol(dim), :Year], $l_symbol = sum(Vector($l_symbol)))
+  
   cats = categorical(df[:, dim])
-  colors = distinguishable_colors(length(unique(cats)))
+  n_levels = length(levels(cats))
+  colors = distinguishable_colors(n_levels)
+  
   fig = Figure()
   ax = Axis(fig[1, 1]; title=title, ylabel = units, xlabel = "Year")
-  barplot!(ax, df.Year, df[:, l], stack=levelcode.(cats), color=colors[levelcode.(cats)])
-  labels = String.(levels(cats))   # return (labels)
+  
+  # Use a mapping from level codes to sequential indices
+  level_to_index = Dict(level => i for (i, level) in enumerate(levels(cats)))
+  color_indices = [level_to_index[level] for level in cats]
+  
+  barplot!(ax, df.Year, df[:, l], stack=color_indices, color=colors[color_indices])
+  
+  labels = String.(levels(cats))
   elements = [PolyElement(polycolor=colors[i]) for i in 1:length(labels)]
   Legend(fig[1, 2], elements, labels, String(dim))
   display(fig)
