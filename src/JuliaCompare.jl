@@ -459,52 +459,71 @@ function lookup_database(name, loc; sec::Char=' ')
 end
 
 function arr_set(vname::String, dbname::String, loc::Loc_j)
-  arr = ReadDisk(loc.HDF5_path, string(dbname,"/", vname))
-  vattr = data_attrs(loc.HDF5_path, string(dbname,"/", vname))
-  if vattr["type"] == "variable"
-    sets = ReadSets(loc.HDF5_path, string(dbname,"/", vname))
-    if :Unit ∈ keys(sets)
-      UnCode = ReadDisk(loc.HDF5_path, "EGInput/UnCode")
-      UnCode[UnCode .== "Null"] .= ""
-      sets.Unit[:] = UnCode[:]
-    end
-  else
-    if vattr["type"] != "set"
-      println(string(dbname,"/", vname), " is of type ", vattr["type"], ". This is unusual.")
-    end
-    values = copy(arr)
-    idx = findfirst("Key", vname)
-    idx_test = findfirst("key", vname)
-    if isnothing(idx)
-      key = [Symbol(vname)]
+    arr = ReadDisk(loc.HDF5_path, string(dbname,"/", vname))
+    vattr = data_attrs(loc.HDF5_path, string(dbname,"/", vname))
+    
+    if vattr["type"] == "variable"
+        sets = ReadSets(loc.HDF5_path, string(dbname,"/", vname))
+        if :Unit ∈ keys(sets)
+            UnCode = ReadDisk(loc.HDF5_path, "EGInput/UnCode")
+            UnCode[UnCode .== "Null"] .= ""
+            sets = merge(sets, (Unit = categorical(UnCode),))
+        end
+        
+        # Convert all set components to categorical
+        categorical_sets = NamedTuple{keys(sets)}(
+            Tuple(categorical(getproperty(sets, k)) for k in keys(sets))
+        )
+        sets = categorical_sets
     else
-      key = [Symbol(vname[setdiff(1:length(vname), idx)])]
+        if vattr["type"] != "set"
+            println(string(dbname,"/", vname), " is of type ", vattr["type"], ". This is unusual.")
+        end
+        values = copy(arr)
+        idx = findfirst("Key", vname)
+        if isnothing(idx)
+            key = [Symbol(vname)]
+        else
+            key = [Symbol(vname[setdiff(1:length(vname), idx)])]
+        end
+        # Make the set values categorical
+        sets = NamedTuple{Tuple(key)}(Tuple([categorical(values)]))
     end
-    sets =  (; zip(key, [values])...)
-  end
-  if :TimeP ∈ keys(sets)
-    if '(' ∉ sets[:TimeP][1]
-      push!(sets(map(tp -> "TimeP($(match(r"\d+", tp).match))", sets[:TimeP])))
+    
+    # Handle TimeP and TimeA transformations while keeping categorical
+    if :TimeP ∈ keys(sets)
+        timeP_vals = getproperty(sets, :TimeP)
+        if '(' ∉ timeP_vals[1]
+            new_timeP = categorical([string("TimeP(", match(r"\d+", tp).match, ")") for tp in timeP_vals])
+            sets = merge(sets, (TimeP = new_timeP,))
+        end
     end
-  end
-  if :TimeA ∈ keys(sets)
-    if '(' ∉ sets[:TimeA][1]
-      push!(sets(map(tp -> "TimeA($(match(r"\d+", tp).match))", sets[:TimeA])))
+    
+    if :TimeA ∈ keys(sets)
+        timeA_vals = getproperty(sets, :TimeA)
+        if '(' ∉ timeA_vals[1]
+            new_timeA = categorical([string("TimeA(", match(r"\d+", ta).match, ")") for ta in timeA_vals])
+            sets = merge(sets, (TimeA = new_timeA,))
+        end
     end
-  end
-  return(arr, sets)
+    
+    return(arr, sets)
 end
 
 function arr_set(vname::String, dbname::String, loc::Loc_p)
-  arr = P.data(joinpath(loc.DATA_FOLDER,string(dbname,".dba")), vname)
+  arr = P.data(joinpath(loc.DATA_FOLDER, string(dbname, ".dba")), vname)
   idx = findfirst(loc.vars.Variable .== vname .&& loc.vars.Database .== dbname)
   keys = Symbol.(split(loc.vars.Dimensions[idx], ","))
   dim_pairs = loc.vars.DPairs[idx]
-  values = [P.data(key,value) for (key, value) in dim_pairs]
-  sets =  (; zip(keys, values)...)
+  
+  # Get the dimension values and convert to categorical
+  values = [P.data(key, value) for (key, value) in dim_pairs]
+  categorical_values = [categorical(vals) for vals in values]
+  
+  sets = NamedTuple{Tuple(keys)}(Tuple(categorical_values))
+  
   return(arr, sets)
 end
-
 
 function add_differences!(df::DataFrame, locs::Vector{<:Location}, diff::Union{Bool, Symbol, Vector{Int}})
   value_cols = [loc.name for loc in locs]
@@ -961,63 +980,53 @@ Filters a multi-dimensional array based on dimension names and values.
 - `Tuple{Array, NamedTuple}`: A tuple containing the filtered array and the filtered dimension sets
 """
 function subset_array(array::AbstractArray, sets::NamedTuple, fltr::Dict{Symbol, <:Any})
-  # Get the dimensions of the array
-  dims = ndims(array)
-  
-  # Get the named dimensions - preserve the original order
-  dim_names = collect(propertynames(sets))
-  
-  # Check that dimensions match
-  if dims != length(dim_names)
-    error("Number of dimensions in array ($(dims)) doesn't match number of sets ($(length(dim_names)))")
-  end
-  
-  # Create selections for each dimension
-  indices_by_dim = []
-  filtered_sets_dict = Dict{Symbol, Vector}()
-  
-  for dim_name in dim_names
-    dim_values = getproperty(sets, dim_name)
+    dim_names = collect(propertynames(sets))
     
-    if haskey(fltr, dim_name)
-      filter_value = fltr[dim_name]
-      
-      # Find the indices that match the filter
-      if filter_value isa Function
-        # Function filter
-        indices = findall(filter_value, dim_values)
-      elseif filter_value isa AbstractArray
-        # Array of values
-        indices = findall(x -> x in filter_value, dim_values)
-      else
-        # Single value (exact match)
-        indices = findall(x -> x == filter_value, dim_values)
-      end
-      
-      if isempty(indices)
-        error("No values found for filter $(dim_name) => $(filter_value)")
-      end
-      
-      push!(indices_by_dim, indices)
-      filtered_sets_dict[dim_name] = dim_values[indices]
-    else
-      # No filter for this dimension, select all
-      indices = collect(1:length(dim_values))
-      push!(indices_by_dim, indices)
-      filtered_sets_dict[dim_name] = dim_values
+    if isempty(fltr)
+        return array, sets
     end
-  end
-  
-  # Create indexing expressions for each dimension
-  indexing = Tuple(indices_by_dim)
-  
-  # Extract the subarray using the indices
-  result = array[indexing...]
-  
-  # Convert the filtered sets dictionary to a NamedTuple with the SAME order as original sets
-  filtered_sets = NamedTuple{Tuple(dim_names)}(Tuple(filtered_sets_dict[name] for name in dim_names))
-  
-  return result, filtered_sets
+    
+    indices_by_dim = Vector{Vector{Int}}()
+    filtered_sets_values = Vector{Any}()
+    
+    for dim_name in dim_names
+        dim_values = getproperty(sets, dim_name)  # This is categorical
+        
+        if haskey(fltr, dim_name)
+            condition = fltr[dim_name]
+            
+            # Optimized filtering for categorical arrays
+            if condition isa AbstractVector
+                # Use Set for O(1) lookup instead of O(n) for each element
+                condition_set = Set(condition)
+                indices = findall(x -> x in condition_set, dim_values)
+            elseif condition isa Function
+                indices = findall(condition, dim_values)
+            else
+                # Single value equality
+                indices = findall(==(condition), dim_values)
+            end
+            
+            push!(indices_by_dim, indices)
+            # Keep as categorical with reduced levels
+            filtered_vals = dim_values[indices]
+            push!(filtered_sets_values, categorical(filtered_vals, levels=levels(filtered_vals)))
+        else
+            # No filter - keep all indices
+            indices = collect(1:length(dim_values))
+            push!(indices_by_dim, indices)
+            push!(filtered_sets_values, dim_values)  # Keep original categorical
+        end
+    end
+    
+    # Extract subarray
+    indexing = Tuple(indices_by_dim)
+    result = array[indexing...]
+    
+    # Reconstruct sets as NamedTuple
+    filtered_sets = NamedTuple{Tuple(dim_names)}(Tuple(filtered_sets_values))
+    
+    return result, filtered_sets
 end
 
 """
@@ -1254,137 +1263,105 @@ df = to_tidy_dataframe(filtered_array, filtered_sets)
 """
 
 function to_tidy_dataframe(array::AbstractArray, sets::NamedTuple; Value::Union{Symbol,String}=:Value)
-  # Get the dimension names
-  Value = Symbol(Value)
-  dim_names = collect(propertynames(sets))
-  # Check that dimensions match
-  if ndims(array) != length(dim_names)
-    error("Number of dimensions in array ($(ndims(array))) doesn't match number of sets ($(length(dim_names)))")
-  end
-  
-  # Create arrays for each dimension value
-  values_by_dim = []
-  for dim_name in dim_names
-    push!(values_by_dim, getproperty(sets, dim_name))
-                    end
-  
-  # Create the result DataFrame
-  df = DataFrame()
-  
-  # Use Base.product to iterate through all combinations of indices
-  indices_iter = Iterators.product([1:length(vals) for vals in values_by_dim]...)
-  
-  # Initialize arrays to hold the data
-  n_elements = length(array)
-  dim_columns = [Vector{eltype(values_by_dim[i])}(undef, n_elements) for i in 1:length(dim_names)]
-  value_column = Vector{eltype(array)}(undef, n_elements)
-  
-  # Fill in the data
-  for (i, idx) in enumerate(indices_iter)
-    # Get the actual value
-    value_column[i] = array[idx...]
+    Value = Symbol(Value)
+    dim_names = collect(propertynames(sets))
     
-    # Get the dimension values
-    for (d, dim_idx) in enumerate(idx)
-      dim_columns[d][i] = values_by_dim[d][dim_idx]
+    if ndims(array) != length(dim_names)
+        error("Number of dimensions in array ($(ndims(array))) doesn't match number of sets ($(length(dim_names)))")
     end
-  end
-  
-  # Add the columns to the DataFrame
-  for (i, name) in enumerate(dim_names)
-    df[!, Symbol(name)] = dim_columns[i]
-  end
-  
-  # Add the value column
-  df[!, Value] = value_column
-  
-  if :Year ∈ dim_names
-    df.Year = parse.(Int64, df.Year)
-  end
-  
-  return df
+    
+    # Extract categorical dimension values
+    values_by_dim = [getproperty(sets, dim_name) for dim_name in dim_names]
+    
+    # Pre-calculate total elements
+    n_elements = length(array)
+    
+    # Pre-allocate all columns at once
+    dim_columns = [CategoricalVector{eltype(vals)}(undef, n_elements) for vals in values_by_dim]
+    value_column = Vector{eltype(array)}(undef, n_elements)
+    
+    # Single pass through all indices
+    idx_counter = 1
+    for idx in CartesianIndices(array)
+        # Fill dimension columns (categorical)
+        for (d, dim_idx) in enumerate(Tuple(idx))
+            dim_columns[d][idx_counter] = values_by_dim[d][dim_idx]
+        end
+        # Fill value column (non-categorical)
+        value_column[idx_counter] = array[idx]
+        idx_counter += 1
+    end
+    
+    # Create DataFrame with pre-allocated columns
+    df = DataFrame()
+    for (i, name) in enumerate(dim_names)
+        df[!, Symbol(name)] = dim_columns[i]
+    end
+    df[!, Value] = value_column
+    
+    # Handle Year parsing if needed
+    if :Year ∈ dim_names && eltype(values_by_dim[findfirst(==(Symbol(:Year)), dim_names)]) <: AbstractString
+        df.Year = parse.(Int64, df.Year)
+    end
+    
+    return df
 end
 
 function to_tidy_dataframe(arrays::Vector{<:AbstractArray}, sets::NamedTuple, value_names::Vector{String})
-  # Check that we have at least one array
-  if isempty(arrays)
-    error("At least one array must be provided")
-  end
-  
-  # Check that all arrays have the same dimensions
-  ref_size = size(arrays[1])
-  ref_ndims = ndims(arrays[1])
-  
-  for (i, arr) in enumerate(arrays)
-    if size(arr) != ref_size
-      error("Array $i has size $(size(arr)), but expected $(ref_size)")
-    end
-    if ndims(arr) != ref_ndims
-      error("Array $i has $(ndims(arr)) dimensions, but expected $(ref_ndims)")
-    end
-  end
-  
-  # Check that number of value names matches number of arrays
-  if length(value_names) != length(arrays)
-    error("Number of value names ($(length(value_names))) doesn't match number of arrays ($(length(arrays)))")
-  end
-  
-  # Get the dimension names
-  dim_names = collect(propertynames(sets))
-  
-  # Check that dimensions match the sets
-  if ref_ndims != length(dim_names)
-    error("Number of dimensions in arrays ($(ref_ndims)) doesn't match number of sets ($(length(dim_names)))")
-  end
-  
-  # Create arrays for each dimension value
-  values_by_dim = []
-  for dim_name in dim_names
-    push!(values_by_dim, getproperty(sets, dim_name))
-  end
-  
-  # Create the result DataFrame
-  df = DataFrame()
-  
-  # Use Base.product to iterate through all combinations of indices
-  indices_iter = Iterators.product([1:length(vals) for vals in values_by_dim]...)
-  
-  # Initialize arrays to hold the data
-  n_elements = length(arrays[1])
-  dim_columns = [Vector{eltype(values_by_dim[i])}(undef, n_elements) for i in 1:length(dim_names)]
-  
-  # Initialize value columns for each array
-  value_columns = [Vector{eltype(arr)}(undef, n_elements) for arr in arrays]
-  
-  # Fill in the data
-  for (i, idx) in enumerate(indices_iter)
-    # Get the dimension values (same for all arrays)
-    for (d, dim_idx) in enumerate(idx)
-      dim_columns[d][i] = values_by_dim[d][dim_idx]
+    if isempty(arrays)
+        error("At least one array must be provided")
     end
     
-    # Get the values from each array
-    for (a, arr) in enumerate(arrays)
-      value_columns[a][i] = arr[idx...]
+    # Quick validation
+    ref_size = size(arrays[1])
+    for (i, arr) in enumerate(arrays)
+        if size(arr) != ref_size
+            error("Array $i has size $(size(arr)), but expected $(ref_size)")
+        end
     end
-  end
-  
-  # Add the dimension columns to the DataFrame
-  for (i, name) in enumerate(dim_names)
-    df[!, Symbol(name)] = dim_columns[i]
-  end
-  
-  # Add the value columns with custom names
-  for (i, value_name) in enumerate(value_names)
-    df[!, Symbol(value_name)] = value_columns[i]
-  end
-  
-  # Parse Year column if it exists
-  if :Year ∈ dim_names
-    df.Year = parse.(Int64, df.Year)
-  end
-  
-  return df
+    
+    if length(value_names) != length(arrays)
+        error("Number of value names ($(length(value_names))) doesn't match number of arrays ($(length(arrays)))")
+    end
+    
+    dim_names = collect(propertynames(sets))
+    values_by_dim = [getproperty(sets, dim_name) for dim_name in dim_names]
+    
+    n_elements = length(arrays[1])
+    
+    # Pre-allocate: categorical for dimensions, regular vectors for values
+    dim_columns = [CategoricalVector{eltype(vals)}(undef, n_elements) for vals in values_by_dim]
+    value_columns = [Vector{eltype(arr)}(undef, n_elements) for arr in arrays]
+    
+    # Single pass fill
+    idx_counter = 1
+    for idx in CartesianIndices(arrays[1])
+        # Fill dimension columns (same for all arrays)
+        for (d, dim_idx) in enumerate(Tuple(idx))
+            dim_columns[d][idx_counter] = values_by_dim[d][dim_idx]
+        end
+        # Fill value columns (one per array)
+        for (a, arr) in enumerate(arrays)
+            value_columns[a][idx_counter] = arr[idx]
+        end
+        idx_counter += 1
+    end
+    
+    # Build DataFrame
+    df = DataFrame()
+    for (i, name) in enumerate(dim_names)
+        df[!, Symbol(name)] = dim_columns[i]
+    end
+    for (i, value_name) in enumerate(value_names)
+        df[!, Symbol(value_name)] = value_columns[i]
+    end
+    
+    # Handle Year parsing
+    if :Year ∈ dim_names && eltype(values_by_dim[findfirst(==(Symbol(:Year)), dim_names)]) <: AbstractString
+        df.Year = parse.(Int64, df.Year)
+    end
+    
+    return df
 end
 
 # Convenience method with default value names
