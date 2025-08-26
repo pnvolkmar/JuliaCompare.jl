@@ -179,8 +179,6 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   else
     cfile = e2020db
   end
-  print("cfilename is: ", cfilename, " cfile is: ", cfile, "\n")
-
 
   makepairs = function (d, cfile, e2020db)
     kinput = joinpath(DATA_FOLDER,"KInput.dba")
