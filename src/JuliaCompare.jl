@@ -81,14 +81,14 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
   
   # Find all "Open Input" lines to track database changes
   open_input_lines = findall(occursin.(r"Open.*\.dba", df.x))
-  println(open_input_lines)
+  # println(open_input_lines)
   # Extract database names from "Open Input" lines
   db_names = String[]
   for line_idx in open_input_lines
     line = df.x[line_idx]
     # Extract database name between quotes
    match_result = match(r"Open\s+\w+\d*\s+\"([^\"]+)\"", line)
-   println(match_result)
+  #  println(match_result)
     if match_result !== nothing
       db_name = replace(match_result.captures[1], ".dba" => "")
       push!(db_names, db_name)
@@ -308,7 +308,7 @@ function var(needle, vars, DATA_FOLDER)
   if nrow(temp) == 1
     return (var_id(temp.RowID[1], vars, DATA_FOLDER))
   elseif nrow(temp) == 0
-    println(needle, " not found in vars, perhaps your variable is in the list below\n")
+    @warn needle, " not found in vars, perhaps your variable is in the list below\n"
     temp2 = findall(occursin.(lowercase.(vars.Variable), lowercase(needle)))
     println(vars[temp2,:])
     error("Variable not found")
@@ -317,7 +317,7 @@ function var(needle, vars, DATA_FOLDER)
     print("Combining ", nrow(temp), "variables")
     return (map(x -> var_id(x, vars, DATA_FOLDER), temp.RowID))
   else
-    println(needle, " could have several values, use var_id to select one of the below\n")
+    @error needle, " could have several values, use var_id to select one of the below\n"
     return (temp)
   end
 end
@@ -347,13 +347,13 @@ function var(needle, loc::Loc_j)
     if length(i) == 1
       database = vars.Database[i][1]
       needle = string(database,"/",needle)
-      println(needle)
+      # println(needle)
       var(needle, loc)
     else
-      print("Multiple variables exist, please specify database")
+      @warn "Multiple variables exist, please specify database"
       df = vars[i, :]
       print(df)
-      error("Please specify a database")
+      @error "Please specify a database"
     end
   end
 end
@@ -392,47 +392,47 @@ function diff(name, loc1, loc2; name1=loc1.name, name2=loc2.name)
   df = diff(df1, df2; name1, name2)
 end
 
-function lookup_database(name, loc; sec::Char=' ')
-  println("Looking up: '$name'")
+function lookup_database(name, loc; sec::Char=' ', verbose = false)
+  verbose && println("Looking up: '$name'")
   
   if contains(name, "/")
-    println("'$name' contains a slash")
+    verbose && println("'$name' contains a slash")
     name_parts = string.(split(name, "/"))
     variable_name = name_parts[2]
     database_name = name_parts[1]
     println("  -> Variable: '$variable_name', Database: '$database_name'")
     return (variable_name, database_name)
   else
-    println("'$name' does not contain a slash")
+    verbose && println("'$name' does not contain a slash")
     vars = loc.vars
     temp2 = find_var(name, vars; exact=true)
     n = nrow(temp2)
     
     if n == 1
       result = (temp2.Variable[1], temp2.Database[1])
-      println("  -> Found exact match: $result")
+      verbose && println("  -> Found exact match: $result")
       return result
       
     elseif n > 1 && sec == ' '  # Changed from "" to ' '
-      println("'$name' could have several values, select one of the below:")
+      @warn "'$name' could have several values, select one of the below:"
       println(temp2)
-      error("Variable not found - multiple matches without sector specification")
+      @error "Variable not found - multiple matches without sector specification"
       
     elseif n > 1 && sec != ' '  # Changed from "" to ' '
       i = findall(first.(temp2.Database) .== sec)
-      println("Found these options:")
-      println(temp2)
-      println("Looking for sector '$sec', found indices: $i")
+      verbose && println("Found these options:")
+      verbose && println(temp2)
+      verbose && println("Looking for sector '$sec', found indices: $i")
       
       if length(i) == 1
         ind = i[1]
         result = (string(temp2[ind, :Variable]), temp2[ind, :Database])
-        println("  -> Selected: $result")
+        verbose && println("  -> Selected: $result")
         return result
       else
-        println("'$name' could have several values, select one of the below:")
+        @warn "'$name' could have several values, select one of the below:"
         println(temp2)
-        error("Variable not found - multiple or no matches for sector '$sec'")
+        @error "Variable not found - multiple or no matches for sector '$sec'"
       end
       
     else
@@ -442,19 +442,19 @@ function lookup_database(name, loc; sec::Char=' ')
       
       if m == 1
         result = (temp.Variable[1], temp.Database[1])
-        println("  -> Found fuzzy match: $result")
+        @warn "  -> Found fuzzy match: $result"
         return result
         
       elseif m == 0
-        println("'$name' not found in vars, perhaps your variable is in the list below:")
+        @warn "'$name' not found in vars, perhaps your variable is in the list below:"
         temp2_indices = findall(occursin.(lowercase(name), lowercase.(vars.Variable)))
         println(vars[temp2_indices, [:Variable, :Database]])
-        error("Variable not found - no matches")
+        @error "Variable not found - no matches"
         
       else
-        println("'$name' has multiple fuzzy matches:")
+        @warn "'$name' has multiple fuzzy matches:"
         println(temp)
-        error("Variable not found - multiple fuzzy matches")
+        @error "Variable not found - multiple fuzzy matches"
       end
     end
   end
@@ -483,7 +483,7 @@ function arr_set(vname::String, dbname::String, loc::Loc_j)
         sets = categorical_sets
     else
         if vattr["type"] != "set"
-            println(string(dbname,"/", vname), " is of type ", vattr["type"], ". This is unusual.")
+            @warn string(dbname,"/", vname), " is of type ", vattr["type"], ". This is unusual."
         end
         values = copy(arr)
         idx = findfirst("Key", vname)
@@ -707,7 +707,7 @@ function var(vname::String, locs::Vector{<:Location};
       end
     end
     if allequal(sets) 
-      println("Sets match After fltr")
+      @warn "Sets match After fltr"
       set = sets[1]
       df = to_tidy_dataframe(arrs, set, loc_names)
     else 
@@ -784,11 +784,11 @@ function join_vars(df1::DataFrame, df2::DataFrame)
   data = names(df1)[end]
   dims = intersect(names(df1), names(df2))
   dims = dims[dims.!="Value"]
-  df = leftjoin(df1, df2, on=dims, makeunique=true)
+  df = outerjoin(df1, df2, on=dims, makeunique=true)
   values = [setdiff(names(df2), dims); setdiff(names(df1), dims)]
-  for c ∈ eachcol(df[!, Symbol.(values)])
-    replace!(c, missing => 0)
-  end
+  # for c ∈ eachcol(df[!, Symbol.(values)])
+  #   replace!(c, missing => 0)
+  # end
   # select!(df, names(df)[names(df).!=data], data)
   return (df)
 end
@@ -879,6 +879,7 @@ function plot_sets(data::DataFrame;
   # Group and sum
   df = @by(df, [Symbol(dim), :Year], $l_symbol = sum(Vector($l_symbol)))
   
+  df[!, dim] = droplevels!(df[!, dim])
   cats = categorical(df[:, dim])
   unique_categories = unique(df[:, dim])  # Only categories in final data
   n_categories = length(unique_categories)
