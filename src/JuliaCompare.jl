@@ -581,7 +581,9 @@ function add_differences!(df::DataFrame, locs::Vector{<:Location}, diff::Union{B
 end
 
 function safe_percent_diff(new_val, old_val)
-  if old_val == 0 && new_val == 0
+  if ismissing(new_val) || ismissing(old_val)
+    return missing
+  elseif old_val == 0 && new_val == 0
     return 0.0  # Both zero: no change = 0%
   elseif old_val == 0
     return Inf  # Division by zero (could also return missing or a large number)
@@ -589,6 +591,7 @@ function safe_percent_diff(new_val, old_val)
     return ((new_val - old_val) / old_val) * 100
   end
 end
+
 
 function add_percent_differences!(df::DataFrame, locs::Vector{<:Location}, percent_diff::Union{Bool, Symbol, Vector{Int}})
   value_cols = [loc.name for loc in locs]
