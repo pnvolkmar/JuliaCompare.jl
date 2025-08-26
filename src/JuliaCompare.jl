@@ -900,7 +900,7 @@ function plot_sets(data::DataFrame;
   display(fig)
 end
 
-function plot_lines(df, cols::AbstractVector{<:Union{Symbol,String,Location}};
+function plot_lines(data::DataFrame, cols::AbstractVector{<:Union{Symbol,String,Location}};
   title::String = "",
   units::String = "")
   
@@ -910,9 +910,21 @@ function plot_lines(df, cols::AbstractVector{<:Union{Symbol,String,Location}};
     cols = [Symbol(col) for col in cols]
   end
   
+  df = dropmissing(data)
   dfg = combine(groupby(df, :Year), cols .=> sum, renamecols=false)
+  if nrow(dfg) == 1
+    println(dfg)
+    @error "plot_lines requires multiple years. Only one year of data is present."
+    return
+  end
   dfg = stack(dfg, cols)
   sort!(dfg, :Year)
+  if dfg.Year isa CategoricalArray
+    dfg.Year = parse.(Int, Vector(dfg.Year))
+  end
+  println(first(dfg, 5))
+  println(typeof(dfg.Year))
+
   
   fig = Figure()
   ax = Axis(fig[1, 1], 
