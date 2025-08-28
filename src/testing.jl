@@ -15,7 +15,7 @@ locs = [loc1, loc2]
 fltr = J.fltr()
 push!(fltr, :Year => ["2049","2050"])
 push!(fltr, :FuelEP => "NaturalGas")
-UnFlFrMin = J.var("UnFlFrMin", locs;fltr)
+UnFlFrMin = J.var("UnFlFrMin", locs;fltr, diff = true, pdiff = true)
 TotPol = J.var("TotPol", locs;fltr)
 J.plot_sets(UnFlFrMin; col = :Redwood, dim = :Unit)
 J.plot_lines(TotPol, locs)

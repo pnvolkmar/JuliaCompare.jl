@@ -169,7 +169,7 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
 
   split_dims = split.(dims, ",")
 
-  sets = ["EC", "Enduse", "Tech"]
+  sets = ["EC", "Enduse", "Tech", "PI"]
   e2020db = joinpath(DATA_FOLDER, "2020db.dba")
   eg = joinpath(DATA_FOLDER, "EGInput.dba")
 
