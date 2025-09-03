@@ -501,16 +501,16 @@ function arr_set(vname::String, dbname::String, loc::Loc_j)
     # Handle TimeP and TimeA transformations while keeping categorical
     if :TimeP ∈ keys(sets)
         timeP_vals = getproperty(sets, :TimeP)
-        if length(timeP_vals) > 0 && '(' ∉ timeP_vals[1]
-            new_timeP = categorical([string("TimeP(", match(r"\d+", tp).match, ")") for tp in timeP_vals])
+        if length(timeP_vals) > 0 && '(' ∉ string(timeP_vals[1])
+            new_timeP = categorical([string("TimeP(", match(r"\d+", string(tp)).match, ")") for tp in timeP_vals])
             sets = merge(sets, (TimeP = new_timeP,))
         end
     end
     
     if :TimeA ∈ keys(sets)
         timeA_vals = getproperty(sets, :TimeA)
-        if length(timeA_vals) > 0 && '(' ∉ timeA_vals[1]
-            new_timeA = categorical([string("TimeA(", match(r"\d+", ta).match, ")") for ta in timeA_vals])
+        if length(timeA_vals) > 0 && '(' ∉ string(timeA_vals[1])
+            new_timeA = categorical([string("TimeA(", match(r"\d+", string(ta)).match, ")") for ta in timeA_vals])
             sets = merge(sets, (TimeA = new_timeA,))
         end
     end
