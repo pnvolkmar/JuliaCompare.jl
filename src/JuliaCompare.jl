@@ -204,7 +204,7 @@ function list_vars(DATA_FOLDER, db_files)
   pathv = splitpath(DATA_FOLDER)
   pathidx = only(findall(pathv.=="2020Model"))
   CODE_FOLDER = joinpath(joinpath(pathv[1:pathidx-1]), "Engine")
-  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, true), db_files)
+  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, false), db_files)
   vars = vcat(dfs...)
 
   vars.RowID = 1:size(vars, 1)
@@ -215,7 +215,7 @@ function list_vars(DATA_FOLDER, db_files)
 end
 
 function list_vars(CODE_FOLDER, DATA_FOLDER, db_files)
-  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, true), db_files)
+  dfs = map(x -> list_var(x, CODE_FOLDER, DATA_FOLDER, false), db_files)
   vars = vcat(dfs...)
 
   vars.RowID = 1:size(vars, 1)
