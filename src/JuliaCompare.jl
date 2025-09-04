@@ -882,6 +882,7 @@ function plot_sets(data::DataFrame;
   
   # Create categorical and get the levels that actually appear in the data
   cats = categorical(df[:, dim])
+  levels!(cats, [ss; "Other"])
   actual_levels = levels(cats)
   colors = distinguishable_colors(length(actual_levels))
   

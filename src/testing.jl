@@ -13,11 +13,8 @@ loc1 = J.loc(raw"\\Pink\c\2020CanadaPine\2020Model\Ref25", "Pine");
 loc2 = J.loc(raw"\\Pink\c\2020CanadaRedwood\2020Model\Ref25", "Redwood");
 locs = [loc1, loc2]
 fltr = J.fltr()
-push!(fltr, :Year => ["2049","2050"])
-push!(fltr, :FuelEP => "NaturalGas")
-UnFlFrMin = J.var("UnFlFrMin", locs;fltr, diff = true, pdiff = true)
 TotPol = J.var("TotPol", locs;fltr)
-J.plot_sets(UnFlFrMin; col = :Redwood, dim = :Unit)
+J.plot_sets(TotPol; col = :Redwood, dim = :ECC)
 J.plot_lines(TotPol, locs)
 vnames = ["MEInput/FuA0","MEInput/FuB0"]
 variables, summary = J.compare_vars(vnames, [loc1, loc2]; diff = true, pdiff = true)
