@@ -880,24 +880,20 @@ function plot_sets(data::DataFrame;
   # Group and sum
   df = @by(df, [Symbol(dim), :Year], $l_symbol = sum(Vector($l_symbol)))
   
-  df[!, dim] = droplevels!(df[!, dim])
+  # Create categorical and get the levels that actually appear in the data
   cats = categorical(df[:, dim])
-  unique_categories = unique(df[:, dim])  # Only categories in final data
-  n_categories = length(unique_categories)
-  colors = distinguishable_colors(n_categories)
-  labels = String.(unique_categories)  
+  actual_levels = levels(cats)
+  colors = distinguishable_colors(length(actual_levels))
   
   fig = Figure()
   ax = Axis(fig[1, 1]; title=title, ylabel = units, xlabel = "Year")
   
-  # Use a mapping from level codes to sequential indices
-  level_to_index = Dict(level => i for (i, level) in enumerate(levels(cats)))
-  color_indices = [level_to_index[level] for level in cats]
+  # Use levelcode for stacking - this gives the correct indices for the categorical levels
+  barplot!(ax, df.Year, df[:, l], stack=levelcode.(cats), color=colors[levelcode.(cats)])
   
-  barplot!(ax, df.Year, df[:, l], stack=color_indices, color=colors[color_indices])
-  
-  elements = [PolyElement(polycolor=colors[i]) for i in 1:length(labels)]
-  Legend(fig[1, 2], elements, labels, String(dim))
+  # Create legend using the actual levels
+  elements = [PolyElement(polycolor=colors[i]) for i in 1:length(actual_levels)]
+  Legend(fig[1, 2], elements, String.(actual_levels), String(dim))
   display(fig)
 end
 
@@ -913,19 +909,28 @@ function plot_lines(data::DataFrame, cols::AbstractVector{<:Union{Symbol,String,
   
   df = dropmissing(data)
   dfg = combine(groupby(df, :Year), cols .=> sum, renamecols=false)
+  
   if nrow(dfg) == 1
     println(dfg)
     @error "plot_lines requires multiple years. Only one year of data is present."
-    return
+    return nothing
   end
+  
   dfg = stack(dfg, cols)
   sort!(dfg, :Year)
+  
+  # Convert Year from categorical to numeric if needed
   if dfg.Year isa CategoricalArray
     dfg.Year = parse.(Int, Vector(dfg.Year))
   end
+  
+  println("First 5 rows of processed data:")
   println(first(dfg, 5))
-  println(typeof(dfg.Year))
-
+  println("Year column type: ", typeof(dfg.Year))
+  
+  # Get unique variables and create consistent colors
+  unique_vars = unique(dfg.variable)
+  colors = distinguishable_colors(length(unique_vars))
   
   fig = Figure()
   ax = Axis(fig[1, 1], 
@@ -933,20 +938,20 @@ function plot_lines(data::DataFrame, cols::AbstractVector{<:Union{Symbol,String,
            ylabel = units, 
            title = title)
   
-  # Plot each group separately
-  for var in unique(dfg.variable)
+  # Plot each group separately with explicit color assignment
+  for (i, var) in enumerate(unique_vars)
     subset_df = filter(row -> row.variable == var, dfg)
     lines!(ax, subset_df.Year, subset_df.value, 
-           label = var,
+           label = String(var),
            linewidth = 5,
-           alpha = 0.5)
+           alpha = 0.5,
+           color = colors[i])  # Explicit color assignment
   end
   
   axislegend(ax, position = :lt)  # :lt = left top
   
   return fig
 end
-
 
 function comparedata(data, data_b, fnames)
   df = DataFrame()
