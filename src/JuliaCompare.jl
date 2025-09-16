@@ -186,6 +186,8 @@ function list_var(cfilename, CODE_FOLDER, DATA_FOLDER, verbose=false)
       Pair(cfile, join([d, "Key"]))
     elseif d == "Unit"
       Pair(eg, "UnCode")
+    elseif d == "RfUnit"
+      Pair(eg, "RfCode")
     elseif d == "OGUnit"
       Pair(e2020db, "OGCode")
     elseif contains(d, "TOM")
