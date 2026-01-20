@@ -5,7 +5,7 @@ using DataFrames, Chain, DataFramesMeta, HDF5
 import PromulaDBA as P
 using Makie, CairoMakie
 using Colors, CategoricalArrays
-import SmallModel: ReadDisk, ReadSets, data_attrs
+import SmallModel: ReadDisk
 
 export db_files, Canada
 include("UnCodeMapping.jl")
@@ -23,6 +23,27 @@ function CloseAllDatabases()
   end
   empty!(open_databases)
   return length(open_databases)
+end
+
+function data_attrs(db, name)
+  h5open(db) do f
+    d = Dict(attrs(f[name]))
+    d["size"] = size(f[name])
+    d
+  end
+end
+
+function ReadSets(db, name)
+  attrs = data_attrs(db, name)
+  get(attrs, "type", "") == "variable" || error(
+    "$name has to be a multi-dimensional array. Expected type `\"variable\"`, found `\"$(attrs["type"])\"` instead.",
+  )
+  dims = h5open(db) do f
+    [Symbol(dim) => collect(read(f["$(dirname(name))/$dim"])) for dim in attrs["dims"]]
+  end
+  keys = first.(dims)
+  values = last.(dims)
+  (; zip(keys, values)...)
 end
 
 abstract type Location end
